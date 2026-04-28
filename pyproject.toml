@@ -1,0 +1,40 @@
+[project]
+name = "personaplex_mlx"
+requires-python = ">= 3.10, < 3.13"
+description = "PersonaPlex on MLX for Apple Silicon"
+dependencies = [
+    "numpy >= 2.1.0, < 2.3",
+    "safetensors >= 0.4.0, < 0.6",
+    "huggingface-hub >= 0.24, < 0.29",
+    "rustymimi == 0.4.1",
+    "sentencepiece == 0.2",
+    "sounddevice == 0.5",
+    "sphn >= 0.2.0, < 0.3.0",
+    "mlx >= 0.26.0, < 0.27",
+    "aiohttp>=3.10.5, <3.12",
+    "torch >= 2.4, < 2.8",
+]
+authors = [{name="PersonaPlex MLX Contributors"}]
+maintainers = [{name="PersonaPlex MLX Contributors"}]
+license = {text = "MIT"}
+dynamic = ["version"]
+readme = "README.md"
+
+[project.scripts]
+personaplex-local = "personaplex_mlx.local:main"
+personaplex-local-web = "personaplex_mlx.local_web:main"
+personaplex-offline = "personaplex_mlx.offline:main"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.dynamic]
+version = {attr = "personaplex_mlx.__version__"}
+
+[project.optional-dependencies]
+dev = [
+    "pyright",
+    "flake8",
+    "pre-commit",
+]

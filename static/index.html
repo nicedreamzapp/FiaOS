@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>FiaOS</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<style>
+:root {
+    --bg: #0a0a0f; --panel: #12121a; --border: #1e1e2e; --text: #e0e0e0;
+    --dim: #666; --accent: #6366f1; --accent2: #7c3aed; --green: #22c55e;
+    --red: #ef4444; --yellow: #eab308; --blue: #3b82f6;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+}
+.topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; background: var(--panel); border-bottom: 1px solid var(--border);
+    height: 44px; flex-shrink: 0;
+}
+.topbar h1 {
+    font-size: 16px; font-weight: 700;
+    background: linear-gradient(135deg, #6366f1, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.chips { display: flex; gap: 8px; align-items: center; }
+.chip {
+    font-size: 10px; padding: 3px 8px; border-radius: 20px;
+    background: #1a1a2e; border: 1px solid var(--border);
+}
+.chip.on { border-color: var(--green); color: var(--green); }
+.topbar a { color: var(--dim); text-decoration: none; font-size: 12px; }
+.tabs {
+    display: flex; background: var(--panel); border-bottom: 1px solid var(--border);
+    overflow-x: auto; flex-shrink: 0;
+}
+.tab {
+    padding: 10px 22px; font-size: 13px; color: var(--dim); cursor: pointer;
+    border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s;
+    font-weight: 500;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.panel { display: none; flex-direction: column; flex: 1; overflow: hidden; }
+.panel.active { display: flex; }
+
+/* SCREEN */
+.screen-container { flex: 1; position: relative; overflow: hidden; background: #000; outline: none; }
+.screen-container:focus { box-shadow: inset 0 0 0 2px var(--accent); }
+.screen-container img { width: 100%; height: 100%; object-fit: contain; cursor: crosshair; }
+.screen-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); background: rgba(0,0,0,0.9); padding: 24px; border-radius: 12px; border: 1px solid var(--border); text-align: center; max-width: 80%; font-size: 14px; z-index: 10; color: var(--dim); }
+.screen-controls {
+    display: flex; gap: 8px; padding: 8px 12px; flex-wrap: wrap;
+    border-top: 1px solid var(--border); align-items: center; flex-shrink: 0;
+}
+.screen-controls label { font-size: 11px; color: var(--dim); }
+.screen-controls select { background: #0e0e14; border: 1px solid var(--border); border-radius: 6px; color: var(--text); padding: 4px 8px; font-size: 12px; }
+.kbd-input {
+    flex: 1; min-width: 150px; background: #0e0e14; border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); padding: 6px 10px; font-size: 13px; outline: none;
+}
+.kbd-input:focus { border-color: var(--accent); }
+
+/* TERMINAL */
+.term-status { padding: 4px 12px; font-size: 11px; color: var(--dim); border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; flex-shrink: 0; }
+.term-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--red); display: inline-block; }
+.term-status.connected .dot { background: var(--green); }
+.btn { background: var(--accent); border: none; border-radius: 8px; color: white; padding: 8px 14px; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.btn:hover { opacity: 0.85; }
+.btn.green { background: var(--green); }
+.btn.ghost { background: transparent; border: 1px solid var(--border); color: var(--dim); }
+.term-quick { display: flex; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+.term-quick button { background: #1a1a2e; border: 1px solid var(--border); border-radius: 6px; color: var(--dim); font-size: 11px; padding: 4px 10px; cursor: pointer; font-family: 'SF Mono',monospace; }
+.term-quick button:hover { color: var(--text); border-color: var(--accent); }
+#xterm-container { flex: 1; padding: 6px 8px; background: #000; overflow: hidden; }
+#xterm-container .xterm { height: 100%; }
+#xterm-container .xterm-viewport { background-color: transparent !important; }
+
+/* VOICE */
+.voice-center { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; flex: 1; padding: 20px; }
+.voice-btn { width: 100px; height: 100px; border-radius: 50%; border: 3px solid var(--accent); background: #1a1a2e; color: var(--accent); font-size: 36px; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; }
+.voice-btn:hover { background: #22224a; }
+.voice-btn.active { background: var(--accent); color: white; box-shadow: 0 0 30px rgba(99,102,241,0.4); animation: pulse 1.5s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { box-shadow: 0 0 20px rgba(99,102,241,0.3); } 50% { box-shadow: 0 0 40px rgba(99,102,241,0.6); } }
+.voice-status { font-size: 13px; color: var(--dim); text-align: center; max-width: 90%; }
+.voice-transcript { width: 90%; max-height: 200px; overflow-y: auto; font-size: 13px; color: var(--dim); padding: 10px; background: #0e0e14; border-radius: 8px; line-height: 1.5; }
+
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #2a2a3a; border-radius: 3px; }
+.main { display: flex; flex-direction: column; height: calc(100vh - 44px); }
+</style>
+</head>
+<body>
+<div class="topbar">
+    <h1>FiaOS</h1>
+    <div class="chips">
+        <span class="chip on" id="statusChip">Online</span>
+        <span class="chip" id="cpuChip">CPU --</span>
+        <span class="chip" id="ramChip">RAM --</span>
+    </div>
+    <a href="/logout">Sign Out</a>
+</div>
+<div class="main">
+    <div class="tabs">
+        <div class="tab active" data-tab="screen">Screen</div>
+        <div class="tab" data-tab="terminal">Terminal</div>
+        <div class="tab" data-tab="voice">Voice</div>
+    </div>
+
+    <!-- SCREEN -->
+    <div class="panel active" id="tab-screen">
+        <div class="screen-container" id="screenContainer" tabindex="0">
+            <img id="screenImg" alt="Screen" draggable="false">
+            <div class="screen-msg" id="screenMsg">Loading screen...</div>
+        </div>
+        <div class="screen-controls">
+            <label>Refresh:</label>
+            <select id="screenRate"><option value="0">Manual</option><option value="1000">1s</option><option value="2000" selected>2s</option><option value="5000">5s</option></select>
+            <button class="btn ghost" id="screenRefresh">Refresh</button>
+            <label style="margin-left:auto">Click to control</label>
+            <input type="checkbox" id="screenClickEnabled" checked>
+            <input class="kbd-input" id="kbdInput" placeholder="Type here to send keys to the Mac...">
+        </div>
+    </div>
+
+    <!-- TERMINAL -->
+    <div class="panel" id="tab-terminal">
+        <div class="term-status" id="termStatus"><span class="dot"></span><span id="termStatusText">Connecting...</span><span style="margin-left:auto;color:var(--dim)">interactive zsh on Mac mini</span></div>
+        <div class="term-quick">
+            <button data-cmd="claude">claude</button>
+            <button data-cmd="cd ~/Desktop && ls">~/Desktop</button>
+            <button data-cmd="cd ~/Desktop/PROJECTS && ls">~/PROJECTS</button>
+            <button data-cmd="top -l 1 | head -20">top</button>
+            <button data-cmd="tail -20 /tmp/fiaos.log">fiaos log</button>
+            <button data-cmd="clear">clear</button>
+        </div>
+        <div id="xterm-container"></div>
+    </div>
+
+    <!-- VOICE -->
+    <div class="panel" id="tab-voice">
+        <div class="voice-center">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <label style="font-size:12px;color:var(--dim)">Voice:</label>
+                <select id="voiceSelect" style="background:#0e0e14;border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 8px;font-size:12px">
+                    <option value="NATF0">Female 1 (Native)</option>
+                    <option value="NATF1">Female 2 (Native)</option>
+                    <option value="NATF2" selected>Female 3 (Native)</option>
+                    <option value="NATF3">Female 4 (Native)</option>
+                    <option value="VARF0">Female 1 (Varied)</option>
+                    <option value="VARF1">Female 2 (Varied)</option>
+                    <option value="VARF2">Female 3 (Varied)</option>
+                    <option value="VARF3">Female 4 (Varied)</option>
+                    <option value="VARF4">Female 5 (Varied)</option>
+                    <option value="NATM0">Male 1 (Native)</option>
+                    <option value="NATM1">Male 2 (Native)</option>
+                    <option value="NATM2">Male 3 (Native)</option>
+                    <option value="NATM3">Male 4 (Native)</option>
+                    <option value="VARM0">Male 1 (Varied)</option>
+                    <option value="VARM1">Male 2 (Varied)</option>
+                    <option value="VARM2">Male 3 (Varied)</option>
+                    <option value="VARM3">Male 4 (Varied)</option>
+                    <option value="VARM4">Male 5 (Varied)</option>
+                </select>
+            </div>
+            <button class="voice-btn" id="voiceBtn">&#x1f3a4;</button>
+            <div class="voice-status" id="voiceStatus">Tap to connect</div>
+            <div id="voicePtt" style="display:none;margin-top:12px;display:flex;align-items:center;gap:12px">
+                <button class="btn" id="pttBtn" style="padding:16px 32px;font-size:16px;border-radius:50px;user-select:none;touch-action:none">Hold to Talk</button>
+                <button id="headphoneBtn" title="Headphone mode (always-on mic)" style="width:44px;height:44px;border-radius:50%;border:2px solid var(--border);background:transparent;color:var(--dim);font-size:20px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.3s">&#127911;</button>
+            </div>
+            <div class="voice-transcript" id="voiceTranscript"></div>
+            <button class="btn ghost" id="testAudioBtn" style="margin-top:12px;font-size:11px">Test Speaker</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let screenTimer = null;
+let termWs = null;
+let voiceWs = null;
+let voiceConnected = false;
+let authOk = true;
+
+// ===== AUTH — intercept 401 and redirect =====
+const _fetch = window.fetch;
+window.fetch = async function(...args) {
+    const res = await _fetch.apply(this, args);
+    if (res.status === 401 && authOk) { authOk = false; window.location.href = '/login'; }
+    return res;
+};
+function getToken() {
+    const m = document.cookie.match(/(^| )fiaos_session=([^;]+)/);
+    if (m) return m[2];
+    return localStorage.getItem('fiaos_token') || '';
+}
+
+// ===== TABS =====
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        if (tab.dataset.tab === 'screen') startScreenRefresh(); else stopScreenRefresh();
+        if (tab.dataset.tab === 'terminal' && term && fitAddon) {
+            setTimeout(() => { try { fitAddon.fit(); } catch {} term.focus(); }, 50);
+        }
+    });
+});
+
+// ===== SCREEN =====
+const screenImg = document.getElementById('screenImg');
+const screenMsg = document.getElementById('screenMsg');
+async function refreshScreen() {
+    try {
+        const res = await _fetch('/api/screenshot?quality=40');
+        if (res.status === 401) { authOk = false; window.location.href = '/login'; return; }
+        if (res.ok) {
+            const blob = await res.blob();
+            if (blob.size > 100) {
+                const url = URL.createObjectURL(blob);
+                screenImg.onload = () => URL.revokeObjectURL(url);
+                screenImg.src = url;
+                screenMsg.style.display = 'none';
+            }
+        } else {
+            try { const d = await res.json(); screenMsg.textContent = d.error || 'Screenshot unavailable'; }
+            catch { screenMsg.textContent = 'Screenshot unavailable'; }
+            screenMsg.style.display = 'block';
+        }
+    } catch { screenMsg.textContent = 'Connection lost'; screenMsg.style.display = 'block'; }
+}
+function startScreenRefresh() {
+    stopScreenRefresh();
+    const rate = parseInt(document.getElementById('screenRate').value);
+    if (rate > 0) screenTimer = setInterval(refreshScreen, rate);
+    refreshScreen();
+}
+function stopScreenRefresh() { if (screenTimer) { clearInterval(screenTimer); screenTimer = null; } }
+document.getElementById('screenRate').addEventListener('change', startScreenRefresh);
+document.getElementById('screenRefresh').addEventListener('click', refreshScreen);
+screenImg.addEventListener('click', (e) => {
+    if (!document.getElementById('screenClickEnabled').checked) return;
+    const rect = screenImg.getBoundingClientRect();
+    const imgW = screenImg.naturalWidth, imgH = screenImg.naturalHeight;
+    if (!imgW || !imgH) return;
+    const scale = Math.min(rect.width / imgW, rect.height / imgH);
+    const offX = (rect.width - imgW * scale) / 2, offY = (rect.height - imgH * scale) / 2;
+    const x = Math.round((e.clientX - rect.left - offX) / scale);
+    const y = Math.round((e.clientY - rect.top - offY) / scale);
+    if (x < 0 || y < 0 || x > imgW || y > imgH) return;
+    fetch('/api/mouse', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({action:'click',x,y}) })
+        .then(() => setTimeout(refreshScreen, 500));
+    document.getElementById('kbdInput').focus();
+});
+function handleRemoteKey(e) {
+    e.preventDefault();
+    if (['Shift','Control','Alt','Meta'].includes(e.key)) return;
+    const mods = [];
+    if (e.metaKey) mods.push('command'); if (e.shiftKey) mods.push('shift');
+    if (e.altKey) mods.push('option'); if (e.ctrlKey) mods.push('control');
+    const specials = {'Enter':'return','Tab':'tab','Escape':'escape','Backspace':'delete','Delete':'delete','ArrowUp':'up','ArrowDown':'down','ArrowLeft':'left','ArrowRight':'right',' ':'space'};
+    let body;
+    if (specials[e.key]) body = {action:'keystroke',key:specials[e.key],modifiers:mods};
+    else if (mods.length) body = {action:'hotkey',key:e.key,modifiers:mods};
+    else body = {action:'type',text:e.key};
+    fetch('/api/keyboard', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) })
+        .then(() => setTimeout(refreshScreen, 300));
+}
+document.getElementById('kbdInput').addEventListener('keydown', handleRemoteKey);
+document.getElementById('screenContainer').addEventListener('keydown', handleRemoteKey);
+
+// ===== TERMINAL (xterm.js + PTY backend) =====
+const termStatus = document.getElementById('termStatus');
+const termStatusText = document.getElementById('termStatusText');
+const xtermContainer = document.getElementById('xterm-container');
+let termRetry = 1000;
+let term = null;
+let fitAddon = null;
+
+function setTermStatus(state, text) {
+    termStatus.classList.toggle('connected', state === 'connected');
+    termStatusText.textContent = text;
+}
+
+function initXterm() {
+    if (term) return;
+    term = new Terminal({
+        cursorBlink: true,
+        fontFamily: '"SF Mono", Menlo, Consolas, monospace',
+        fontSize: 13,
+        theme: {
+            background: '#000000',
+            foreground: '#e0e0e0',
+            cursor: '#6366f1',
+            selectionBackground: '#264f78',
+            black: '#000000', red: '#ef4444', green: '#22c55e', yellow: '#eab308',
+            blue: '#3b82f6', magenta: '#a855f7', cyan: '#06b6d4', white: '#e0e0e0',
+            brightBlack: '#666666', brightRed: '#fca5a5', brightGreen: '#86efac',
+            brightYellow: '#fde047', brightBlue: '#93c5fd', brightMagenta: '#d8b4fe',
+            brightCyan: '#67e8f9', brightWhite: '#ffffff',
+        },
+        scrollback: 5000,
+        convertEol: true,
+    });
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(xtermContainer);
+    setTimeout(() => fitAddon.fit(), 50);
+    // Forward keystrokes -> WS
+    term.onData(d => {
+        if (termWs && termWs.readyState === 1) {
+            termWs.send(JSON.stringify({ type: 'input', data: d }));
+        }
+    });
+    term.onResize(({ cols, rows }) => {
+        if (termWs && termWs.readyState === 1) {
+            termWs.send(JSON.stringify({ type: 'resize', cols, rows }));
+        }
+    });
+    // Refit on window resize and when terminal tab activates
+    window.addEventListener('resize', () => { try { fitAddon.fit(); } catch {} });
+}
+
+function connectTerminal() {
+    if (!authOk) return;
+    initXterm();
+    setTermStatus('connecting', 'Connecting...');
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    termWs = new WebSocket(`${proto}//${location.host}/api/terminal?token=${getToken()}`);
+    termWs.binaryType = 'arraybuffer';
+    window.termWs = termWs;
+    termWs.onopen = () => {
+        termRetry = 1000;
+        setTermStatus('connected', 'Connected');
+        // send initial size
+        try { termWs.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows })); } catch {}
+    };
+    termWs.onmessage = e => {
+        if (e.data instanceof ArrayBuffer) {
+            term.write(new Uint8Array(e.data));
+        } else {
+            term.write(e.data);
+        }
+    };
+    termWs.onclose = (ev) => {
+        if (ev.code === 1008 || ev.code === 4001) { authOk = false; window.location.href = '/login'; return; }
+        setTermStatus('disconnected', `Disconnected (${ev.code}) — reconnecting...`);
+        termRetry = Math.min(termRetry * 2, 30000);
+        setTimeout(connectTerminal, termRetry);
+    };
+    termWs.onerror = () => setTermStatus('error', 'Error');
+}
+
+// Quick-shortcut buttons send the command + Enter into the PTY
+function sendTermInput(text) {
+    if (!termWs || termWs.readyState !== 1) return;
+    if (text === 'clear') { term.clear(); return; }
+    termWs.send(JSON.stringify({ type: 'input', data: text + '\n' }));
+    term.focus();
+}
+document.querySelectorAll('.term-quick button').forEach(b => {
+    b.addEventListener('click', () => sendTermInput(b.dataset.cmd));
+});
+
+// ===== VOICE =====
+const voiceBtn = document.getElementById('voiceBtn');
+const voiceStatus = document.getElementById('voiceStatus');
+const voiceTranscript = document.getElementById('voiceTranscript');
+const pttContainer = document.getElementById('voicePtt');
+const pttBtn = document.getElementById('pttBtn');
+let micStream=null, audioCtx=null, micProcessor=null, micSource=null, voiceGain=null;
+let _nextPlayTime = 0;
+let isTalking=false;
+let headphoneMode = false;
+
+async function toggleVoice() {
+    if (voiceConnected) { disconnectVoice(); return; }
+    voiceStatus.textContent = 'Requesting mic...'; voiceTranscript.textContent = '';
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (!devices.some(d => d.kind === 'audioinput')) { voiceStatus.textContent = 'No microphone found.'; return; }
+    } catch {}
+    try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+        audioCtx = new AudioContext({ sampleRate: 24000 });
+        if (audioCtx.state === 'suspended') await audioCtx.resume();
+        voiceGain = audioCtx.createGain(); voiceGain.gain.value = 15.0; voiceGain.connect(audioCtx.destination);
+        _nextPlayTime = 0;
+        voiceStatus.textContent = 'Connecting to Fia...';
+        const proto = location.protocol==='https:'?'wss:':'ws:';
+        const selectedVoice = document.getElementById('voiceSelect').value;
+        voiceWs = new WebSocket(`${proto}//${location.host}/voice?token=${getToken()}&voice=${selectedVoice}`);
+        voiceWs.binaryType = 'arraybuffer';
+        voiceWs.onopen = () => { voiceConnected = true; voiceBtn.classList.add('active'); voiceStatus.textContent = 'Waiting for Fia to be ready...'; pttContainer.style.display = 'block'; };
+        voiceWs.onmessage = (e) => {
+            if (!(e.data instanceof ArrayBuffer)) return;
+            const v = new Uint8Array(e.data);
+            if (v.length === 0) return;
+            if (v[0] === 0x00) startMicCapture();
+            else if (v[0] === 0x01) {
+                if ((!isTalking || headphoneMode) && audioCtx) {
+                    const pcm = new Float32Array(e.data.slice(1));
+                    if (pcm.length > 0) {
+                        const buf = audioCtx.createBuffer(1, pcm.length, 24000);
+                        buf.getChannelData(0).set(pcm);
+                        const src = audioCtx.createBufferSource();
+                        src.buffer = buf; src.connect(voiceGain);
+                        const now = audioCtx.currentTime;
+                        if (_nextPlayTime < now) _nextPlayTime = now + 0.05;
+                        src.start(_nextPlayTime); _nextPlayTime += buf.duration;
+                    }
+                }
+            } else if (v[0] === 0x02) {
+                const text = new TextDecoder().decode(v.slice(1));
+                voiceTranscript.textContent += text;
+                voiceTranscript.scrollTop = voiceTranscript.scrollHeight;
+            }
+        };
+        voiceWs.onclose = () => disconnectVoice();
+        voiceWs.onerror = () => { voiceStatus.textContent = 'Connection error — is PersonaPlex running?'; disconnectVoice(); };
+    } catch (err) {
+        voiceStatus.textContent = (err.name === 'NotFoundError' || err.name === 'NotAllowedError') ? 'Microphone not available.' : 'Error: ' + err.message;
+        disconnectVoice();
+    }
+}
+function startMicCapture() {
+    if (!micStream || !audioCtx) return;
+    micSource = audioCtx.createMediaStreamSource(micStream);
+    micProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+    micProcessor.onaudioprocess = (e) => {
+        if (!voiceConnected || !voiceWs || voiceWs.readyState !== 1) return;
+        const samples = isTalking ? new Float32Array(e.inputBuffer.getChannelData(0)) : new Float32Array(e.inputBuffer.length);
+        const msg = new Uint8Array(1 + samples.byteLength);
+        msg[0] = 0x01;
+        msg.set(new Uint8Array(samples.buffer, samples.byteOffset, samples.byteLength), 1);
+        voiceWs.send(msg.buffer);
+    };
+    micSource.connect(micProcessor);
+    const muteGain = audioCtx.createGain(); muteGain.gain.value = 0;
+    micProcessor.connect(muteGain); muteGain.connect(audioCtx.destination);
+    voiceStatus.textContent = 'Ready — hold button to talk';
+}
+function startTalking() { if (!voiceConnected) return; isTalking = true; pttBtn.textContent = 'Talking...'; pttBtn.style.background = 'var(--green)'; voiceStatus.textContent = 'Listening to you...'; _nextPlayTime = 0; }
+function stopTalking() { if (!voiceConnected) return; isTalking = false; pttBtn.textContent = 'Hold to Talk'; pttBtn.style.background = ''; voiceStatus.textContent = 'Fia is thinking...'; _nextPlayTime = 0; }
+pttBtn.addEventListener('mousedown', () => { if (!headphoneMode) startTalking(); });
+pttBtn.addEventListener('mouseup', () => { if (!headphoneMode) stopTalking(); });
+pttBtn.addEventListener('mouseleave', () => { if (!headphoneMode && isTalking) stopTalking(); });
+pttBtn.addEventListener('touchstart', (e) => { e.preventDefault(); if (!headphoneMode) startTalking(); });
+pttBtn.addEventListener('touchend', (e) => { e.preventDefault(); if (!headphoneMode) stopTalking(); });
+pttBtn.addEventListener('touchcancel', () => { if (!headphoneMode && isTalking) stopTalking(); });
+const headphoneBtn = document.getElementById('headphoneBtn');
+headphoneBtn.addEventListener('click', () => {
+    headphoneMode = !headphoneMode;
+    if (headphoneMode) {
+        headphoneBtn.style.borderColor = 'var(--accent)'; headphoneBtn.style.color = 'var(--accent)'; headphoneBtn.style.background = '#1a1a3e';
+        pttBtn.textContent = 'Mic Always On'; pttBtn.style.background = 'var(--accent)'; pttBtn.style.opacity = '0.7'; pttBtn.style.pointerEvents = 'none';
+        if (voiceConnected) { isTalking = true; voiceStatus.textContent = 'Headphone mode — mic always on'; }
+    } else {
+        headphoneBtn.style.borderColor = 'var(--border)'; headphoneBtn.style.color = 'var(--dim)'; headphoneBtn.style.background = 'transparent';
+        pttBtn.textContent = 'Hold to Talk'; pttBtn.style.background = ''; pttBtn.style.opacity = '1'; pttBtn.style.pointerEvents = 'auto';
+        isTalking = false;
+        if (voiceConnected) voiceStatus.textContent = 'Ready — hold button to talk';
+    }
+});
+function disconnectVoice() {
+    voiceConnected = false; isTalking = false;
+    voiceBtn.classList.remove('active');
+    if (!voiceStatus.textContent.startsWith('Error') && !voiceStatus.textContent.startsWith('Micro') && !voiceStatus.textContent.startsWith('Connection error')) voiceStatus.textContent = 'Tap to connect';
+    pttContainer.style.display = 'none'; pttBtn.textContent = 'Hold to Talk'; pttBtn.style.background = ''; pttBtn.style.opacity = '1'; pttBtn.style.pointerEvents = 'auto';
+    headphoneMode = false; if (headphoneBtn) { headphoneBtn.style.borderColor = 'var(--border)'; headphoneBtn.style.color = 'var(--dim)'; headphoneBtn.style.background = 'transparent'; }
+    if (voiceWs) { try{voiceWs.close();}catch(e){} voiceWs=null; }
+    if (micStream) { micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+    if (micProcessor) { micProcessor.disconnect(); micProcessor=null; }
+    if (micSource) { micSource.disconnect(); micSource=null; }
+    _nextPlayTime = 0;
+    if (voiceGain) { voiceGain.disconnect(); voiceGain=null; }
+    if (audioCtx) { audioCtx.close().catch(()=>{}); audioCtx=null; }
+}
+voiceBtn.addEventListener('click', toggleVoice);
+document.getElementById('testAudioBtn').addEventListener('click', () => {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.frequency.value = 440; gain.gain.value = 0.3;
+    osc.connect(gain); gain.connect(ctx.destination); osc.start();
+    setTimeout(() => { osc.stop(); ctx.close(); }, 500);
+});
+
+// ===== STATUS CHIPS (CPU/RAM only) =====
+async function updateStatus() {
+    try {
+        const d = await (await fetch('/api/status')).json();
+        document.getElementById('cpuChip').textContent = 'CPU '+d.cpu_percent+'%';
+        document.getElementById('ramChip').textContent = 'RAM '+d.ram_percent+'%';
+    } catch {}
+}
+
+// ===== INIT =====
+startScreenRefresh();
+connectTerminal();
+updateStatus();
+setInterval(updateStatus, 10000);
+</script>
+</body>
+</html>

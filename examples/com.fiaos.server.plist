@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.fiaos.server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/REPLACE/WITH/ABSOLUTE/PATH/TO/FiaOS/.venv/bin/python3</string>
+        <string>-u</string>
+        <string>/REPLACE/WITH/ABSOLUTE/PATH/TO/FiaOS/server.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/REPLACE/WITH/ABSOLUTE/PATH/TO/FiaOS</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/fiaos.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/fiaos.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- REQUIRED: server refuses to start without this. -->
+        <!-- Generate one: python3 -c "import secrets; print(secrets.token_urlsafe(24))" -->
+        <key>FIAOS_PASSWORD</key>
+        <string>REPLACE-WITH-LONG-RANDOM-STRING</string>
+
+        <!-- OPTIONAL: persona system prompt for the voice agent. -->
+        <key>FIA_PROMPT</key>
+        <string>You are a helpful local voice assistant. Keep replies short.</string>
+    </dict>
+</dict>
+</plist>

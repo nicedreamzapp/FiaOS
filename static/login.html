@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FiaOS — Login</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', sans-serif;
+    background: #0a0a0f;
+    color: #e0e0e0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+.login-box {
+    background: #16161e;
+    border: 1px solid #2a2a3a;
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 360px;
+    text-align: center;
+}
+h1 {
+    font-size: 28px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #6366f1, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.subtitle { color: #666; font-size: 14px; margin-bottom: 32px; }
+input {
+    width: 100%;
+    padding: 14px 16px;
+    background: #0e0e14;
+    border: 1px solid #2a2a3a;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-size: 16px;
+    outline: none;
+    margin-bottom: 16px;
+}
+input:focus { border-color: #6366f1; }
+button {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+button:hover { opacity: 0.9; }
+.error { color: #ef4444; font-size: 13px; margin-top: 12px; display: none; }
+</style>
+</head>
+<body>
+<div class="login-box">
+    <h1>FiaOS</h1>
+    <p class="subtitle">Remote Mac Control Center</p>
+    <form id="loginForm">
+        <input type="password" id="password" placeholder="Password" autofocus>
+        <button type="submit">Sign In</button>
+    </form>
+    <p class="error" id="error"></p>
+</div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const pw = document.getElementById('password').value;
+    const errEl = document.getElementById('error');
+    errEl.style.display = 'none';
+    try {
+        const res = await fetch('/api/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: pw})
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.token) localStorage.setItem('fiaos_token', data.token);
+            window.location.href = '/';
+        } else {
+            const data = await res.json();
+            errEl.textContent = data.error || 'Login failed';
+            errEl.style.display = 'block';
+        }
+    } catch (err) {
+        errEl.textContent = 'Connection error';
+        errEl.style.display = 'block';
+    }
+});
+</script>
+</body>
+</html>

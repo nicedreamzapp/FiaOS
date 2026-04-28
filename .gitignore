@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local FiaOS state — should never be committed
+.sessions.json
+*.bak-*
+/tmp/fiaos*.log
+
+# Voice samples and model files (download separately)
+voice_samples/
+personaplex_mlx/
+
+# Local config that varies per install
+*.local.plist
+.env
+.env.local
