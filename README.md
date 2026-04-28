@@ -2,9 +2,11 @@
 
 # FiaOS
 
-### Run Claude Code on your Mac mini — from your phone.
+### Open a browser tab. You're now driving your Mac mini.
 
-**Self-hosted · live screen · real PTY shell · on-device voice agent · Apple Silicon native · zero cloud · zero API keys**
+**Live remote desktop · real PTY shell (Claude Code, vim, top — all real) · on-device voice agent · self-hosted · Apple Silicon native · zero cloud · zero API keys**
+
+> 💡 **Looking for the iMessage version?** See [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone) — same Mac, async text-driven workflow. **FiaOS is the live one** — open a web page, you *are* on the Mac.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-6366f1.svg?style=for-the-badge)](LICENSE)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%2FM2%2FM3%2FM4-7c3aed?style=for-the-badge&logo=apple)](https://www.apple.com/mac/)
@@ -90,14 +92,17 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 
 ## ⚖️ Compared to
 
-| Tool | Screen | Real shell | Voice | Mobile | Self-hosted | Native client? |
-|---|:-:|:-:|:-:|:-:|:-:|:-:|
-| **FiaOS** | ✅ | ✅ PTY | ✅ on-device | ✅ | ✅ | ❌ none |
-| Tailscale + SSH | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ required |
-| VNC / Apple Remote Desktop | ✅ | ❌ | ❌ | ⚠️ | ✅ | ✅ required |
-| Cursor mobile | ❌ | ⚠️ | ❌ | ✅ | ❌ cloud | ✅ required |
-| iSH / Termius | ❌ | ✅ | ❌ | ✅ | ⚠️ | ✅ required |
-| ChatGPT app | ❌ | ❌ | ✅ cloud | ✅ | ❌ cloud | ✅ required |
+> **Already using [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone)?** That's the **async** sibling — text a command from anywhere, your Mac executes it, you get screenshots/videos back as iMessages. **FiaOS is the live mode** — open a web page, you're sitting at the Mac in real time. Different superpowers, same family.
+
+| Tool | Mode | Live screen | Real shell | Voice | Mobile | Self-hosted | Native client? |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| **FiaOS** | **Live** | ✅ | ✅ PTY | ✅ on-device | ✅ | ✅ | ❌ none |
+| `claude-screen-to-phone` | **Async (iMessage)** | ❌ | ⚠️ via cmd | ❌ | ✅ | ✅ | ✅ Messages |
+| Tailscale + SSH | Live shell | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ required |
+| VNC / Apple Remote Desktop | Live screen | ✅ | ❌ | ❌ | ⚠️ | ✅ | ✅ required |
+| Cursor mobile | Async cloud | ❌ | ⚠️ | ❌ | ✅ | ❌ cloud | ✅ required |
+| iSH / Termius | Live shell | ❌ | ✅ | ❌ | ✅ | ⚠️ | ✅ required |
+| ChatGPT app | Cloud chat | ❌ | ❌ | ✅ cloud | ✅ | ❌ cloud | ✅ required |
 
 ---
 
