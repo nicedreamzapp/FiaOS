@@ -2,17 +2,21 @@
 
 # FiaOS
 
-### Drive your Mac from anywhere.
+### Run Claude Code on your Mac mini — from your phone.
 
-**Live screen → real interactive shell → on-device voice agent — through one self-hosted page.**
+**Self-hosted · live screen · real PTY shell · on-device voice agent · Apple Silicon native · zero cloud · zero API keys**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-6366f1.svg?style=for-the-badge)](LICENSE)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1%2FM2%2FM3%2FM4-7c3aed?style=for-the-badge&logo=apple)](https://www.apple.com/mac/)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-22c55e.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-ready-eab308?style=for-the-badge)](https://claude.com/claude-code)
+[![Self-Hosted](https://img.shields.io/badge/Self--Hosted-100%25-22c55e?style=for-the-badge)](https://github.com/awesome-selfhosted/awesome-selfhosted)
+[![Local AI](https://img.shields.io/badge/Local%20AI-on--device-ef4444?style=for-the-badge)](https://github.com/ml-explore/mlx)
 
 [![GitHub stars](https://img.shields.io/github/stars/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/network/members)
+
+> **Tags:** `claude-code` · `mac-mini` · `apple-silicon` · `mlx` · `local-ai` · `on-device-ai` · `self-hosted` · `homelab` · `headless-mac` · `vnc-alternative` · `ssh-alternative` · `web-terminal` · `pty` · `xterm.js` · `ai-agent` · `voice-assistant`
 
 </div>
 
@@ -68,6 +72,32 @@ Three things, that's it:
 `tailscale` + an SSH client + a VNC viewer can each do a piece of this. FiaOS bundles them into **one auth-gated web page** so you can drive your Mac mini from any device — without installing anything client-side.
 
 The Terminal tab specifically gets you a working **Claude Code session on your Mac mini, from your phone**. That's the killer feature this whole thing was built around.
+
+---
+
+## 💡 Use cases
+
+> If any of these describe you, FiaOS exists for you.
+
+- **🤖 Claude Code on iPhone / iPad** — Your Mac mini does the heavy lifting; your phone is just the front-end.
+- **🏠 Headless Mac mini homelab** — Plug it in, never connect a monitor again. Drive everything from a browser.
+- **🛡️ Self-hosted Cursor / GitHub Copilot Workspace alternative** — Same kind of agentic coding loop, on hardware you own, with no SaaS in the path.
+- **📡 Replace SSH + VNC + RDP** — One web page does what used to take three apps and a Tailscale subscription.
+- **🎙️ Local voice assistant on Apple Silicon** — On-device MLX speech model. No audio leaves your house.
+- **✈️ Travel light** — Borrow any laptop, hit your URL, you're back at your dev environment.
+
+---
+
+## ⚖️ Compared to
+
+| Tool | Screen | Real shell | Voice | Mobile | Self-hosted | Native client? |
+|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| **FiaOS** | ✅ | ✅ PTY | ✅ on-device | ✅ | ✅ | ❌ none |
+| Tailscale + SSH | ❌ | ✅ | ❌ | ⚠️ | ✅ | ✅ required |
+| VNC / Apple Remote Desktop | ✅ | ❌ | ❌ | ⚠️ | ✅ | ✅ required |
+| Cursor mobile | ❌ | ⚠️ | ❌ | ✅ | ❌ cloud | ✅ required |
+| iSH / Termius | ❌ | ✅ | ❌ | ✅ | ⚠️ | ✅ required |
+| ChatGPT app | ❌ | ❌ | ✅ cloud | ✅ | ❌ cloud | ✅ required |
 
 ---
 
@@ -162,6 +192,58 @@ examples/           ─ LaunchAgent plist template
 - **Frontend:** vanilla JS · [xterm.js 5.3](https://xtermjs.org/) · WebSocket · WebAudio
 - **Voice:** [MLX](https://github.com/ml-explore/mlx) on Apple Silicon (via PersonaPlex)
 - **Tunnel:** OpenSSH reverse forwarding · nginx HTTPS termination
+
+---
+
+## ❓ FAQ
+
+<details>
+<summary><strong>Does this replace SSH?</strong></summary>
+
+For interactive use, basically yes — the Terminal tab is a real PTY-backed `zsh -l -i`, so anything that worked in SSH works here. For automation (`scp`, `rsync`, `git push` over SSH agent forwarding) you still want SSH.
+</details>
+
+<details>
+<summary><strong>How is this different from VNC or Apple Remote Desktop?</strong></summary>
+
+VNC streams the framebuffer continuously; FiaOS just polls a screenshot every 1–5 seconds. That's all you need for "what's happening?" and "click here." It's much lighter on bandwidth, doesn't need a native client, and works perfectly over a phone hotspot.
+</details>
+
+<details>
+<summary><strong>Does the voice agent send audio to the cloud?</strong></summary>
+
+**No.** Voice runs entirely on-device using MLX on Apple Silicon (via PersonaPlex). Your audio never leaves your Mac mini. There are no API keys to set.
+</details>
+
+<details>
+<summary><strong>Can I use this without exposing it to the internet?</strong></summary>
+
+Yes — skip steps 4 and 5. Run the server, hit `http://your-mac-mini.local:9000` from any device on your home network. No tunnel, no nginx, no domain.
+</details>
+
+<details>
+<summary><strong>Why Apple Silicon only?</strong></summary>
+
+The voice model uses MLX, which is Apple-Silicon-only. Screen capture uses Apple's Quartz framework. Everything else (terminal, screen, file browsing) would work on Intel Macs and Linux, but the voice tab specifically would need a different inference backend.
+</details>
+
+<details>
+<summary><strong>Does it work without Claude Code?</strong></summary>
+
+Of course. FiaOS is a remote-Mac-control web UI — Claude Code is just one of many programs you can run in the Terminal tab. `vim`, `nvim`, `tmux`, `htop`, `gh`, `node`, `python -i`, custom scripts — they all work because the shell is a real PTY.
+</details>
+
+<details>
+<summary><strong>How is FiaOS different from a Tailscale + SSH setup?</strong></summary>
+
+Tailscale + SSH gives you a terminal. FiaOS gives you a terminal **plus** a live screen viewer **plus** a voice agent **plus** a mobile-friendly UI **plus** zero client-side install — all behind one password on a single web page.
+</details>
+
+<details>
+<summary><strong>Is this a Cursor mobile alternative?</strong></summary>
+
+Sort of. Cursor mobile is a polished AI-coding UI tied to a SaaS. FiaOS is a self-hosted web shell that lets you run *whatever* AI coding agent you want (Claude Code, Aider, gh-copilot, your own scripts) on hardware you control.
+</details>
 
 ---
 
