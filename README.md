@@ -17,6 +17,7 @@
 
 [![GitHub stars](https://img.shields.io/github/stars/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/network/members)
+[![Sponsor](https://img.shields.io/github/sponsors/nicedreamzapp?style=social&logo=github-sponsors)](https://github.com/sponsors/nicedreamzapp)
 
 > **Tags:** `claude-code` · `mac-mini` · `apple-silicon` · `mlx` · `local-ai` · `on-device-ai` · `self-hosted` · `homelab` · `headless-mac` · `vnc-alternative` · `ssh-alternative` · `web-terminal` · `pty` · `xterm.js` · `ai-agent` · `voice-assistant`
 
@@ -252,6 +253,12 @@ Sort of. Cursor mobile is a polished AI-coding UI tied to a SaaS. FiaOS is a sel
 
 ---
 
+## 💚 Sponsor
+
+Solo dev. No VC. Built on a Mac in Humboldt County. If FiaOS saves you a Claude bill or just makes you smile, kick a few bucks at [github.com/sponsors/nicedreamzapp](https://github.com/sponsors/nicedreamzapp) — every dollar goes back into more local-first tools and keeping this 100% open source.
+
+---
+
 ## 📜 License
 
 MIT — see [LICENSE](LICENSE).
@@ -262,6 +269,6 @@ MIT — see [LICENSE](LICENSE).
 
 Built by [**Matt Macosko**](https://github.com/nicedreamzapp) · Fia is the assistant who lives on the Mac mini.
 
-⭐ **If you find this useful, drop a star.**
+⭐ **If you find this useful, drop a star** — or [💚 sponsor](https://github.com/sponsors/nicedreamzapp) to keep it growing.
 
 </div>
