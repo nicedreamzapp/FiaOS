@@ -39,8 +39,10 @@ SESSION_COOKIE = "fiaos_session"
 SESSION_EXPIRY = 86400  # 24 hours
 MAX_LOGIN_ATTEMPTS = 10
 LOGIN_WINDOW = 300  # 5 minutes
+MAX_IP_BUCKETS = 4096  # ceiling on the rate-limit table
 SCREENSHOT_DIR = tempfile.mkdtemp(prefix="fiaos_screenshots_")
 SESSION_FILE = FIAOS_DIR / ".sessions.json"
+REVOKED_FILE = FIAOS_DIR / ".revoked.json"
 
 # Windows venv layout. The Mac build hardcoded .venv/bin/python3 in three
 # places; sys.executable is already the venv interpreter when the server was
@@ -85,26 +87,167 @@ def _load_sessions() -> dict[str, float]:
     return {}
 
 
-def _save_sessions():
+def _write_json_atomic(path: Path, obj) -> bool:
+    """Write via a temp file and rename, so a crash cannot truncate the real one.
+
+    write_text() opens with O_TRUNC: the old contents are gone the instant it
+    starts. Being killed mid-write therefore left a half-written .sessions.json,
+    _load_sessions() caught the JSON error and returned {}, and every session on
+    the machine was silently gone. Not hypothetical -- the mini's FiaOS has been
+    SIGKILLed before (forge_guard reclaiming memory). os.replace is atomic on
+    the same filesystem, so readers see either the whole old file or the whole
+    new one, never a stump.
+    """
+    tmp = path.with_name(path.name + ".tmp")
     try:
-        SESSION_FILE.write_text(json.dumps(sessions))
+        tmp.write_text(json.dumps(obj))
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+        return False
+
+
+def _save_sessions():
+    _write_json_atomic(SESSION_FILE, sessions)
+
+
+def _load_revoked() -> dict[str, float]:
+    """Tokens killed by an explicit logout, kept until they would have expired."""
+    try:
+        if REVOKED_FILE.exists():
+            data = json.loads(REVOKED_FILE.read_text())
+            now = time.time()
+            return {k: v for k, v in data.items() if v > now}
     except Exception:
         pass
+    return {}
+
+
+def _save_revoked():
+    _write_json_atomic(REVOKED_FILE, revoked)
 
 
 sessions: dict[str, float] = _load_sessions()
+revoked: dict[str, float] = _load_revoked()
+
+def _sweep_sessions() -> int:
+    """Drop tokens whose expiry has passed. Returns how many went.
+
+    .sessions.json only ever GREW: _load_sessions() prunes at startup, but
+    create_session() appended a new key per login (each token carries its own
+    expiry, so no login ever reuses a key) and nothing removed the dead ones
+    until the next restart. Found 2026-09-07: 9 tokens piled up on the M5 in a
+    single day, all still live then, all dead weight 24 h later.
+
+    Deliberately swept on write rather than on a timer: the file can only grow
+    at login, so sweeping there bounds it exactly, and an idle machine keeps
+    doing no work at all -- same rule the screen worker follows.
+    """
+    now = time.time()
+    dead = [k for k, v in sessions.items() if v <= now]
+    for k in dead:
+        sessions.pop(k, None)
+    return len(dead)
+
+
+
+def _token_expiry(token: str) -> int | None:
+    """Expiry stamped inside a signed token, or None if it is not one."""
+    parts = token.split(".")
+    if len(parts) != 3 or parts[0] != "v1":
+        return None
+    try:
+        return int(parts[1])
+    except ValueError:
+        return None
+
+
+def _sweep_revoked() -> int:
+    """Forget revocations for tokens that have expired on their own."""
+    now = time.time()
+    dead = [k for k, v in revoked.items() if v <= now]
+    for k in dead:
+        revoked.pop(k, None)
+    return len(dead)
+
+
+def revoke_session(token: str) -> bool:
+    """Really kill a token, not just forget we issued it.
+
+    Tokens are SIGNED (v1.<expiry>.<hmac>) so that one login covers all three
+    machines without them talking to each other. The cost of that: dropping a
+    token from .sessions.json revoked nothing, because valid_session() fell
+    through to the signature check and happily re-validated it. Logout deleted
+    the cookie and left the token itself working until its 24 h ran out.
+
+    So logout now records the token here and valid_session() checks this FIRST.
+    Bounded by construction: an entry is only worth keeping until the token's
+    own expiry, and _sweep_revoked() drops it after that.
+
+    Limit worth knowing: this list is per machine. Logging out on the M5 does
+    not revoke the token on the mini -- they share a password, not state. The
+    global kill switch is rotating FIAOS_PASSWORD, which invalidates every
+    signature on every machine at once.
+    """
+    exp = _token_expiry(token)
+    if exp is None:
+        # Legacy random token: it only ever validated by being in `sessions`,
+        # so removing it there is already a real revocation.
+        return sessions.pop(token, None) is not None
+    if exp <= time.time():
+        return False                      # already dead, nothing to remember
+    _sweep_revoked()
+    revoked[token] = exp
+    _save_revoked()
+    return True
+
+
+def client_ip(request: web.Request) -> str:
+    """The real caller, not the tunnel.
+
+    Every remote request arrives from 127.0.0.1: nginx on the VPS proxies into
+    an SSH tunnel, so request.remote is identical for the entire internet. Rate
+    limiting on that gave everybody ONE shared bucket -- ten wrong passwords
+    from any stranger locked Matt out of his own machines for five minutes.
+
+    nginx sets X-Real-IP from $remote_addr, OVERWRITING whatever the client
+    sent, so it is trustworthy -- but only on a request that actually came in
+    over loopback, or anyone on the LAN could just claim to be someone else.
+    """
+    peer = request.remote or "unknown"
+    if peer in ("127.0.0.1", "::1"):
+        for header in ("CF-Connecting-IP", "X-Real-IP"):
+            v = request.headers.get(header, "").strip()
+            if v:
+                return v[:64]
+    return peer
 
 
 def check_rate_limit(ip: str) -> bool:
     now = time.time()
-    attempts = login_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < LOGIN_WINDOW]
-    login_attempts[ip] = attempts
+    attempts = [t for t in login_attempts.get(ip, []) if now - t < LOGIN_WINDOW]
+    # Drop the bucket instead of storing an empty list. login_attempts kept one
+    # entry per IP for the life of the process and never removed any, so an
+    # internet-facing box grew a row per scanner, forever.
+    if attempts:
+        login_attempts[ip] = attempts
+    else:
+        login_attempts.pop(ip, None)
     return len(attempts) >= MAX_LOGIN_ATTEMPTS
 
 
 def record_attempt(ip: str):
-    login_attempts.setdefault(ip, []).append(time.time())
+    now = time.time()
+    # Hard ceiling so a spray across many source IPs cannot grow this without
+    # bound between sweeps. Evict whoever is closest to ageing out anyway.
+    if len(login_attempts) >= MAX_IP_BUCKETS and ip not in login_attempts:
+        for stale in sorted(login_attempts, key=lambda k: max(login_attempts[k]))[:64]:
+            login_attempts.pop(stale, None)
+    login_attempts.setdefault(ip, []).append(now)
 
 
 def _sign(expiry: int) -> str:
@@ -120,6 +263,9 @@ def _sign(expiry: int) -> str:
 
 
 def create_session() -> str:
+    _sweep_sessions()          # bound the files: prune before we add
+    if _sweep_revoked():
+        _save_revoked()
     expiry = int(time.time() + SESSION_EXPIRY)
     token = _sign(expiry)
     sessions[token] = expiry
@@ -129,6 +275,10 @@ def create_session() -> str:
 
 def valid_session(token: str) -> bool:
     if not token:
+        return False
+
+    # Revoked beats everything, including a perfectly good signature.
+    if token in revoked:
         return False
 
     # A token this machine issued itself. Random tokens from before the signed
@@ -191,12 +341,28 @@ async def handle_login_page(request: web.Request):
 
 
 async def handle_login(request: web.Request):
-    ip = request.remote or "unknown"
+    ip = client_ip(request)
     if check_rate_limit(ip):
         return web.json_response({"error": "Too many attempts. Try again later."}, status=429)
-    data = await request.json()
-    password = data.get("password", "")
-    if not hmac.compare_digest(password, PASSWORD):
+    # The app allows 100 MB bodies for file uploads, and that ceiling applied to
+    # this unauthenticated endpoint too. A login is a few dozen bytes; read a
+    # bounded amount so nobody can make us buffer a hundred megabytes to be told
+    # their password is wrong.
+    raw = await request.content.read(4097)
+    if len(raw) > 4096:
+        record_attempt(ip)
+        return web.json_response({"error": "Bad request"}, status=413)
+    try:
+        data = json.loads(raw or b"{}")
+    except Exception:
+        record_attempt(ip)
+        return web.json_response({"error": "Bad request"}, status=400)
+    password = data.get("password", "") if isinstance(data, dict) else ""
+    # compare_digest raises on a non-string, and on any str outside ASCII.
+    if not isinstance(password, str):
+        password = ""
+    if not hmac.compare_digest(password.encode("utf-8", "replace"),
+                               PASSWORD.encode("utf-8", "replace")):
         record_attempt(ip)
         return web.json_response({"error": "Wrong password"}, status=401)
     token = create_session()
@@ -211,7 +377,9 @@ async def handle_login(request: web.Request):
 
 async def handle_logout(request: web.Request):
     token = get_token(request)
-    sessions.pop(token, None)
+    revoke_session(token)
+    if sessions.pop(token, None) is not None:
+        _save_sessions()
     resp = web.HTTPFound("/login")
     resp.del_cookie(SESSION_COOKIE)
     return resp

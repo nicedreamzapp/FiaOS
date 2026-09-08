@@ -38,3 +38,4 @@ static/weekly-rhythm.html
 static/*.png
 static/*.jpg
 static/*.bak-*
+.revoked.json
