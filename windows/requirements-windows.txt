@@ -1,0 +1,8 @@
+# Windows build of FiaOS. The Mac list pulls mlx / rustymimi / sounddevice /
+# pyobjc, none of which exist or are needed here. Screen capture, input and the
+# terminal are all native Windows calls in this port.
+aiohttp>=3.10.5,<3.11
+numpy>=2.1.0
+Pillow>=10
+psutil>=6.0.0
+pywinpty>=2.0.13

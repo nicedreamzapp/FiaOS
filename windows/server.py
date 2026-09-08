@@ -2,19 +2,17 @@
 
 import asyncio
 import base64
-import fcntl
+import ctypes
 import hashlib
 import hmac
 import json
 import os
-import pty
 import secrets
 import shutil
 import signal
-import struct
 import subprocess
+import sys
 import tempfile
-import termios
 import time
 from pathlib import Path
 
@@ -29,26 +27,47 @@ import screencast
 PORT = 9000
 FIAOS_DIR = Path(__file__).parent
 STATIC_DIR = FIAOS_DIR / "static"
-def _abort_no_password():
-    sys.exit(
-        "FIAOS_PASSWORD env var is not set. Set one in your LaunchAgent plist "
-        "(examples/com.fiaos.server.plist) before starting FiaOS -- it is the "
-        "only thing standing between the open internet and your desktop.")
-
-
-PASSWORD = os.environ.get("FIAOS_PASSWORD") or _abort_no_password()
+MACHINE_KEY = os.environ.get("FIAOS_MACHINE", "mini")  # mini | m5 | pc
+PASSWORD = os.environ.get("FIAOS_PASSWORD") or sys.exit(
+    "FIAOS_PASSWORD is not set. Export the same password the Macs use before starting FiaOS.")
 # Which machine this copy of FiaOS runs on -- the MINI/M5/PC tabs in the UI.
 # The cookie is deliberately NOT per-machine: session tokens are signed with the
 # shared password, so one login covers every machine and switching tabs never
 # asks for it again.
 MACHINE = os.environ.get("FIAOS_MACHINE", "mini")
-CLAUDE_BIN = (shutil.which("claude") or os.path.expanduser("~/.local/bin/claude"))
 SESSION_COOKIE = "fiaos_session"
 SESSION_EXPIRY = 86400  # 24 hours
 MAX_LOGIN_ATTEMPTS = 10
 LOGIN_WINDOW = 300  # 5 minutes
 SCREENSHOT_DIR = tempfile.mkdtemp(prefix="fiaos_screenshots_")
 SESSION_FILE = FIAOS_DIR / ".sessions.json"
+
+# Windows venv layout. The Mac build hardcoded .venv/bin/python3 in three
+# places; sys.executable is already the venv interpreter when the server was
+# started with it, which is what the service does.
+VENV_PYTHON = str(FIAOS_DIR / ".venv" / "Scripts" / "python.exe")
+if not os.path.exists(VENV_PYTHON):
+    VENV_PYTHON = sys.executable
+
+# System drive, not "/" — psutil.disk_usage("/") raises on Windows.
+SYSTEM_DRIVE = os.environ.get("SystemDrive", "C:") + "\\"
+
+
+def _claude_bin() -> str:
+    """Where Claude Code lives on this machine.
+
+    The Mac build hardcoded one absolute path. On Windows it is a .cmd shim
+    whose location varies with how it was installed, so look rather than guess.
+    """
+    found = shutil.which("claude") or shutil.which("claude.cmd")
+    if found:
+        return found
+    for cand in (Path(os.environ.get("APPDATA", "")) / "npm" / "claude.cmd",
+                 Path.home() / ".local" / "bin" / "claude.exe",
+                 Path.home() / "AppData" / "Local" / "Programs" / "claude" / "claude.exe"):
+        if cand.exists():
+            return str(cand)
+    return "claude"        # let the OS resolve it, and report the error honestly
 
 
 # --- Session store (persisted to disk) ---
@@ -245,7 +264,7 @@ async def handle_claude_stream(request: web.Request):
     await resp.prepare(request)
 
     cmd_args = [
-        CLAUDE_BIN,
+        _claude_bin(),
         "--dangerously-skip-permissions",
         "-p", prompt,
         "--output-format", "stream-json",
@@ -421,16 +440,10 @@ def _mem_free_percent():
     This is what Activity Monitor's pressure gauge reads. psutil's percent
     counts inactive and compressed pages as used, so a Mac holding models
     resident on purpose reads ~50% forever whether it is healthy or drowning.
-    Falls back to psutil's available/total if the sysctl is ever missing.
     """
-    try:
-        out = subprocess.run(["sysctl", "-n", "kern.memorystatus_level"],
-                             capture_output=True, text=True, timeout=3)
-        v = int(out.stdout.strip())
-        if 0 <= v <= 100:
-            return v
-    except Exception:
-        pass
+    # No Windows equivalent of kern.memorystatus_level, and none is needed:
+    # Windows has no compressed-but-counted-as-used class of page, so
+    # available/total is already the honest number Activity Monitor approximates.
     m = psutil.virtual_memory()
     return int(round(m.available / m.total * 100))
 
@@ -442,7 +455,7 @@ async def handle_status(request: web.Request):
     # voice sockets for half a second on every status poll.
     cpu_percent = psutil.cpu_percent(interval=None)
     mem = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
+    disk = psutil.disk_usage(SYSTEM_DRIVE)
     # Battery (laptops)
     battery = psutil.sensors_battery()
     bat_info = None
@@ -475,33 +488,76 @@ async def handle_status(request: web.Request):
 # SCREENSHOT / SCREEN VIEWER
 # ═══════════════════════════════════════
 
+# caffeinate's replacement. SetThreadExecutionState is per-thread and only
+# holds while that thread lives, so it is pinned to the event loop thread and
+# refcounted: two viewers must both leave before the display may sleep again.
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_DISPLAY_REQUIRED = 0x00000002
+_display_holders = 0
+
+
+def _display_hold(on: bool):
+    """Keep the screen awake while someone is watching, and let it sleep after."""
+    global _display_holders
+    _display_holders = max(0, _display_holders + (1 if on else -1))
+    try:
+        if _display_holders:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+        else:
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+    except Exception:
+        pass
+
+
+def _wake_display():
+    """Nudge a blanked display on, so a capture is not a black rectangle."""
+    try:
+        ctypes.windll.kernel32.SetThreadExecutionState(
+            ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED)
+        if not _display_holders:
+            ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+    except Exception:
+        pass
+
+
+def _grab_jpeg(path: str, quality: int, max_w: int = 1600) -> bool:
+    """One still frame to disk. Same BitBlt the stream worker uses."""
+    try:
+        import numpy as np
+        from PIL import Image
+        from screen_worker import Capture
+        arr = Capture().grab()
+        if arr is None:
+            return False
+        img = Image.fromarray(np.ascontiguousarray(arr))
+        if img.width > max_w:
+            img = img.resize((max_w, round(img.height * max_w / img.width)),
+                             Image.BILINEAR)
+        img.save(path, "JPEG", quality=max(20, min(90, quality)))
+        return True
+    except Exception as e:
+        print(f"[FiaOS] screenshot failed: {e}")
+        return False
+
+
 @require_auth
 async def handle_screenshot(request: web.Request):
     """Capture the screen and return as JPEG."""
     quality = request.query.get("quality", "50")
     # a sleeping display captures black — nudge it awake first
-    await (await asyncio.create_subprocess_exec("/usr/bin/caffeinate", "-u", "-t", "3")).wait()
+    _wake_display()
     filepath = os.path.join(SCREENSHOT_DIR, "screen.jpg")
     # Remove old screenshot
     if os.path.exists(filepath):
         os.remove(filepath)
-    proc = await asyncio.create_subprocess_exec(
-        "screencapture", "-x", "-t", "jpg", filepath,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0 or not os.path.exists(filepath) or os.path.getsize(filepath) < 100:
-        # screencapture failed — likely no Screen Recording permission
-        # Generate a placeholder image with error message
-        return web.json_response({
-            "error": "Screen Recording permission required. Go to System Settings > Privacy & Security > Screen Recording and enable Terminal (or Python).",
-        }, status=403)
-    # Compress with sips — downscale too, or a 3440-wide frame ships ~425 KB
-    # every refresh through the ssh tunnel and starves the terminal socket
-    await (await asyncio.create_subprocess_exec(
-        "sips", "-s", "formatOptions", quality, "-Z", "1600", filepath,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )).communicate()
+    # Downscale here too, or a 1920-wide frame ships hundreds of KB every
+    # refresh through the ssh tunnel and starves the terminal socket.
+    ok = await asyncio.get_running_loop().run_in_executor(
+        None, _grab_jpeg, filepath, int(quality) if str(quality).isdigit() else 50)
+    if not ok or not os.path.exists(filepath) or os.path.getsize(filepath) < 100:
+        return web.json_response({"error": "Screen capture failed."}, status=500)
     # Don't ship a frame the browser already has. A desktop sitting still was
     # costing about 1.4 Mbps through the VPS for no reason; now it costs nothing.
     with open(filepath, "rb") as fh:
@@ -514,236 +570,164 @@ async def handle_screenshot(request: web.Request):
                                             "X-Frame-Hash": stamp})
 
 
-@require_auth
+# ═══════════════════════════════════════
 # MOUSE / KEYBOARD CONTROL
 # ═══════════════════════════════════════
 
 @require_auth
 async def handle_mouse(request: web.Request):
-    """Control mouse via Quartz (CoreGraphics) — no cliclick or Accessibility needed."""
+    """Control the mouse. Same SendInput path the live screen view uses."""
     data = await request.json()
     action = data.get("action", "click")  # click, move, doubleclick, rightclick, scroll
-    x = data.get("x", 0)
-    y = data.get("y", 0)
-
-    event_map = {
-        "click": "kCGEventLeftMouseDown,kCGEventLeftMouseUp,kCGMouseButtonLeft",
-        "doubleclick": "kCGEventLeftMouseDown,kCGEventLeftMouseUp,kCGMouseButtonLeft,2",
-        "rightclick": "kCGEventRightMouseDown,kCGEventRightMouseUp,kCGMouseButtonRight",
-        "move": "kCGEventMouseMoved,None,kCGMouseButtonLeft",
-        "scroll": "scroll",
-    }
-
-    if action not in event_map:
-        return web.json_response({"error": "Unknown action"}, status=400)
+    x = int(data.get("x", 0))
+    y = int(data.get("y", 0))
 
     if action == "scroll":
-        direction = data.get("direction", "down")
-        amount = data.get("amount", 3)
-        scroll_val = -amount if direction == "down" else amount
-        script = f"""\
-import Quartz
-e = Quartz.CGEventCreateScrollWheelEvent(None, Quartz.kCGScrollEventUnitLine, 1, {scroll_val})
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
-"""
+        amount = int(data.get("amount", 3))
+        dy = -amount if data.get("direction", "down") == "down" else amount
+        ev = {"t": "scroll", "dy": dy * 40, "dx": 0}   # lines -> the pixel deltas the driver expects
     elif action == "move":
-        script = f"""\
-import Quartz
-e = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, ({x}, {y}), Quartz.kCGMouseButtonLeft)
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, e)
-"""
+        ev = {"t": "move", "x": x, "y": y}
+    elif action == "click":
+        ev = {"t": "click", "x": x, "y": y, "btn": "left"}
+    elif action == "rightclick":
+        ev = {"t": "click", "x": x, "y": y, "btn": "right"}
     elif action == "doubleclick":
-        script = f"""\
-import Quartz, time
-pos = ({x}, {y})
-for i in range(2):
-    down = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseDown, pos, Quartz.kCGMouseButtonLeft)
-    down.setIntegerValueField(Quartz.kCGMouseEventClickState, i+1)
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
-    up = Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventLeftMouseUp, pos, Quartz.kCGMouseButtonLeft)
-    up.setIntegerValueField(Quartz.kCGMouseEventClickState, i+1)
-    Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
-    if i == 0: time.sleep(0.05)
-"""
+        ev = {"t": "dblclick", "x": x, "y": y}
     else:
-        # click or rightclick
-        down_evt = "kCGEventLeftMouseDown" if action == "click" else "kCGEventRightMouseDown"
-        up_evt = "kCGEventLeftMouseUp" if action == "click" else "kCGEventRightMouseUp"
-        btn = "kCGMouseButtonLeft" if action == "click" else "kCGMouseButtonRight"
-        script = f"""\
-import Quartz
-pos = ({x}, {y})
-down = Quartz.CGEventCreateMouseEvent(None, Quartz.{down_evt}, pos, Quartz.{btn})
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, down)
-up = Quartz.CGEventCreateMouseEvent(None, Quartz.{up_evt}, pos, Quartz.{btn})
-Quartz.CGEventPost(Quartz.kCGHIDEventTap, up)
-"""
+        return web.json_response({"error": "Unknown action"}, status=400)
 
-    venv_python = str(FIAOS_DIR / ".venv" / "bin" / "python3")
-    proc = await asyncio.create_subprocess_exec(
-        venv_python, "-c", script,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        err = stderr.decode().strip()
-        return web.json_response({"error": f"Mouse control failed: {err}"}, status=500)
-
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _input_handle, ev)
+    except Exception as e:
+        return web.json_response({"error": f"Mouse control failed: {e}"}, status=500)
     return web.json_response({"ok": True, "action": action, "x": x, "y": y})
 
 
 @require_auth
 async def handle_keyboard(request: web.Request):
-    """Send keystrokes via osascript."""
+    """Send keystrokes. Same SendInput path the live screen view uses."""
     data = await request.json()
-    action = data.get("action", "type")  # type, keystroke, hotkey
+    action = data.get("action", "type")   # type, keystroke, hotkey
     text = data.get("text", "")
     key = data.get("key", "")
-    modifiers = data.get("modifiers", [])  # ["command", "shift", "option", "control"]
+    # The API's vocabulary is macOS's; the driver's is the browser's.
+    modmap = {"command": "ctrl", "cmd": "ctrl", "control": "ctrl", "ctrl": "ctrl",
+              "option": "alt", "alt": "alt", "shift": "shift"}
+    mods = [modmap.get(str(m).lower(), str(m).lower()) for m in data.get("modifiers", [])]
 
     if action == "type":
-        # Type text
-        escaped = text.replace('"', '\\"')
-        script = f'''
-        tell application "System Events"
-            keystroke "{escaped}"
-        end tell'''
-    elif action == "keystroke":
-        # Single key press (e.g., "return", "tab", "escape")
-        key_map = {
-            "return": "return", "enter": "return", "tab": "tab",
-            "escape": "escape", "space": "space", "delete": "delete",
-            "backspace": "delete", "up": "up arrow", "down": "down arrow",
-            "left": "left arrow", "right": "right arrow",
-            "f1": "F1", "f2": "F2", "f3": "F3", "f4": "F4",
-            "f5": "F5", "f6": "F6", "f7": "F7", "f8": "F8",
-            "f9": "F9", "f10": "F10", "f11": "F11", "f12": "F12",
-        }
-        mapped = key_map.get(key.lower(), key)
-        mod_str = ""
-        if modifiers:
-            mod_parts = [f"{m} down" for m in modifiers]
-            mod_str = " using {" + ", ".join(mod_parts) + "}"
-        script = f'''
-        tell application "System Events"
-            key code (key code "{mapped}"){mod_str}
-        end tell'''
-        # Simpler approach
-        if not modifiers:
-            script = f'''
-            tell application "System Events"
-                keystroke "{key}"
-            end tell''' if len(key) == 1 else f'''
-            tell application "System Events"
-                key code {_key_to_code(mapped)}
-            end tell'''
+        ev = {"t": "text", "s": text}
+    elif action in ("keystroke", "hotkey"):
+        named = {"return": "Enter", "enter": "Enter", "tab": "Tab", "escape": "Escape",
+                 "esc": "Escape", "space": "Space", "delete": "Delete",
+                 "backspace": "Backspace", "up": "ArrowUp", "down": "ArrowDown",
+                 "left": "ArrowLeft", "right": "ArrowRight", "home": "Home",
+                 "end": "End", "pageup": "PageUp", "pagedown": "PageDown"}
+        k = key.lower()
+        if k in named:
+            ev = {"t": "key", "k": named[k], "down": True, "mods": mods}
+        elif k.startswith("f") and k[1:].isdigit():
+            ev = {"t": "key", "k": "F" + k[1:], "down": True, "mods": mods}
+        elif len(key) == 1 and mods:
+            ev = {"t": "combo", "k": key, "mods": mods}
+        elif len(key) == 1:
+            ev = {"t": "text", "s": key}
         else:
-            mod_str = " using {" + ", ".join(f"{m} down" for m in modifiers) + "}"
-            if len(key) == 1:
-                script = f'''
-                tell application "System Events"
-                    keystroke "{key}"{mod_str}
-                end tell'''
-            else:
-                script = f'''
-                tell application "System Events"
-                    key code {_key_to_code(mapped)}{mod_str}
-                end tell'''
-    elif action == "hotkey":
-        # Keyboard shortcut like Cmd+C
-        mod_str = " using {" + ", ".join(f"{m} down" for m in modifiers) + "}"
-        script = f'''
-        tell application "System Events"
-            keystroke "{key}"{mod_str}
-        end tell'''
+            return web.json_response({"error": f"Unknown key: {key}"}, status=400)
     else:
         return web.json_response({"error": "Unknown action"}, status=400)
 
-    proc = await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, stderr = await proc.communicate()
-    err = stderr.decode().strip()
-    if proc.returncode != 0 and err:
-        return web.json_response({"error": err}, status=500)
+    try:
+        await asyncio.get_running_loop().run_in_executor(None, _input_handle, ev)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
     return web.json_response({"ok": True})
 
 
-def _key_to_code(key_name: str) -> int:
-    """Map key names to macOS key codes."""
-    codes = {
-        "return": 36, "tab": 48, "space": 49, "delete": 51,
-        "escape": 53, "up arrow": 126, "down arrow": 125,
-        "left arrow": 123, "right arrow": 124,
-        "F1": 122, "F2": 120, "F3": 99, "F4": 118,
-        "F5": 96, "F6": 97, "F7": 98, "F8": 100,
-        "F9": 101, "F10": 109, "F11": 103, "F12": 111,
-    }
-    return codes.get(key_name, 36)
+def _input_handle(ev):
+    """In-process input injection for the one-shot REST routes.
+
+    The live screen view keeps a persistent driver process because a fresh
+    interpreter per click cost ~100 ms. These routes fire rarely, so importing
+    the same module and calling it directly is simpler and has no such cost.
+    """
+    import input_helper
+    input_helper.ensure_dpi_aware()
+    input_helper.handle(ev)
 
 
 # ═══════════════════════════════════════
 # CLIPBOARD
 # ═══════════════════════════════════════
+# pbcopy/pbpaste have no Windows twin. PowerShell's Get/Set-Clipboard is the
+# closest thing that needs no extra dependency and no window handle.
+
+async def _powershell(script: str, stdin_text: str = None):
+    # Windows PowerShell writes a REDIRECTED pipe in the console's OEM code page,
+    # not UTF-8, so every non-ASCII character came back as U+FFFD -- silently, the
+    # caller still got a string. Pin both ends to UTF-8 before the caller's script
+    # runs. Guarded: the encoding setters throw when no console is attached.
+    script = ("try{[Console]::OutputEncoding=[Text.UTF8Encoding]::new()}catch{};"
+              "try{[Console]::InputEncoding=[Text.UTF8Encoding]::new()}catch{};"
+              "$OutputEncoding=[Text.UTF8Encoding]::new();" + script)
+    proc = await asyncio.create_subprocess_exec(
+        "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script,
+        stdin=asyncio.subprocess.PIPE if stdin_text is not None else None,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    data = stdin_text.encode("utf-8") if stdin_text is not None else None
+    out, err = await proc.communicate(data)
+    return proc.returncode, (out or b"").decode("utf-8", "replace")
+
 
 @require_auth
 async def handle_clipboard_get(request: web.Request):
-    proc = await asyncio.create_subprocess_exec(
-        "pbpaste", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    stdout, _ = await proc.communicate()
-    return web.json_response({"text": stdout.decode(errors="replace")})
+    _, out = await _powershell("Get-Clipboard -Raw")
+    return web.json_response({"text": out.rstrip("\r\n")})
 
 
 @require_auth
 async def handle_clipboard_set(request: web.Request):
     data = await request.json()
     text = data.get("text", "")
-    proc = await asyncio.create_subprocess_exec(
-        "pbcopy", stdin=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate(text.encode())
-    return web.json_response({"ok": True})
+    # Piped through stdin, never interpolated into the command line: the text is
+    # arbitrary and would otherwise be parsed as PowerShell.
+    code, _ = await _powershell(
+        "$in = [Console]::In.ReadToEnd(); Set-Clipboard -Value $in", text)
+    return web.json_response({"ok": code == 0})
 
 
 # ═══════════════════════════════════════
 # VOLUME CONTROL
 # ═══════════════════════════════════════
+# Windows exposes no scriptable master volume without a COM dependency, so this
+# drives the same virtual media keys a keyboard sends. Level is stepped, not set.
+VK_VOLUME_MUTE, VK_VOLUME_DOWN, VK_VOLUME_UP = 0xAD, 0xAE, 0xAF
+
+
+def _tap_vk(vk: int, times: int = 1):
+    import input_helper
+    for _ in range(max(1, times)):
+        input_helper._send(input_helper._kb(vk=vk, flags=0),
+                           input_helper._kb(vk=vk, flags=input_helper.KEYEVENTF_KEYUP))
+
 
 @require_auth
 async def handle_volume(request: web.Request):
+    loop = asyncio.get_running_loop()
     if request.method == "GET":
-        proc = await asyncio.create_subprocess_exec(
-            "osascript", "-e", "output volume of (get volume settings)",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-        # Check mute
-        proc2 = await asyncio.create_subprocess_exec(
-            "osascript", "-e", "output muted of (get volume settings)",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        stdout2, _ = await proc2.communicate()
-        return web.json_response({
-            "volume": int(stdout.decode().strip() or "0"),
-            "muted": stdout2.decode().strip() == "true",
-        })
-    else:
-        data = await request.json()
-        if "volume" in data:
-            vol = max(0, min(100, int(data["volume"])))
-            await (await asyncio.create_subprocess_exec(
-                "osascript", "-e", f"set volume output volume {vol}",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )).communicate()
-        if "muted" in data:
-            muted = "true" if data["muted"] else "false"
-            await (await asyncio.create_subprocess_exec(
-                "osascript", "-e", f"set volume output muted {muted}",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-            )).communicate()
-        return web.json_response({"ok": True})
+        # Nothing to read back without COM; say unknown rather than invent it.
+        return web.json_response({"volume": None, "muted": None,
+                                  "note": "stepped control only on Windows"})
+    data = await request.json()
+    if "muted" in data:
+        await loop.run_in_executor(None, _tap_vk, VK_VOLUME_MUTE, 1)
+    if "volume" in data:
+        delta = int(data.get("delta", 0)) or (10 if int(data["volume"]) >= 50 else -10)
+        vk = VK_VOLUME_UP if delta > 0 else VK_VOLUME_DOWN
+        await loop.run_in_executor(None, _tap_vk, vk, min(25, abs(delta) // 2 or 1))
+    return web.json_response({"ok": True})
 
 
 # ═══════════════════════════════════════
@@ -755,13 +739,18 @@ async def handle_notification(request: web.Request):
     data = await request.json()
     title = data.get("title", "FiaOS")
     message = data.get("message", "")
-    escaped_title = title.replace('"', '\\"')
-    escaped_msg = message.replace('"', '\\"')
-    script = f'display notification "{escaped_msg}" with title "{escaped_title}"'
-    await (await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )).communicate()
+    # Balloon tip via WinForms. A real toast needs a registered AppUserModelID,
+    # which is far more machinery than this route is worth.
+    script = (
+        "$t = [Console]::In.ReadToEnd() -split \"`n\", 2;"
+        "Add-Type -AssemblyName System.Windows.Forms;"
+        "Add-Type -AssemblyName System.Drawing;"
+        "$n = New-Object System.Windows.Forms.NotifyIcon;"
+        "$n.Icon = [System.Drawing.SystemIcons]::Information;"
+        "$n.BalloonTipTitle = $t[0]; $n.BalloonTipText = $t[1];"
+        "$n.Visible = $true; $n.ShowBalloonTip(5000); Start-Sleep -Seconds 6;"
+        "$n.Dispose()")
+    asyncio.create_task(_powershell(script, title + "\n" + message))
     return web.json_response({"ok": True})
 
 
@@ -811,44 +800,70 @@ async def handle_kill_process(request: web.Request):
 
 @require_auth
 async def handle_apps(request: web.Request):
-    """List installed applications."""
-    apps = []
-    for app_dir in ["/Applications", os.path.expanduser("~/Applications"), os.path.expanduser("~/Desktop")]:
-        if os.path.isdir(app_dir):
-            for item in os.listdir(app_dir):
-                if item.endswith(".app"):
-                    apps.append({"name": item.replace(".app", ""), "path": os.path.join(app_dir, item)})
+    """Installed applications — Start Menu shortcuts are Windows' /Applications."""
+    apps, seen = [], set()
+    roots = [
+        os.path.join(os.environ.get("ProgramData", "C:\\ProgramData"),
+                     "Microsoft", "Windows", "Start Menu", "Programs"),
+        os.path.join(os.environ.get("APPDATA", ""),
+                     "Microsoft", "Windows", "Start Menu", "Programs"),
+        os.path.expanduser("~/Desktop"),
+    ]
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _dirs, files in os.walk(root):
+            for f in files:
+                if not f.lower().endswith((".lnk", ".url")):
+                    continue
+                name = os.path.splitext(f)[0]
+                if name.lower() in seen:
+                    continue
+                seen.add(name.lower())
+                apps.append({"name": name, "path": os.path.join(dirpath, f)})
     apps.sort(key=lambda a: a["name"].lower())
     return web.json_response({"apps": apps})
 
 
 @require_auth
 async def handle_open_app(request: web.Request):
-    """Open an application."""
+    """Open an application by name, or by the path /api/apps handed back."""
     data = await request.json()
     app_name = data.get("name", "")
-    proc = await asyncio.create_subprocess_exec(
-        "open", "-a", app_name,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        return web.json_response({"error": stderr.decode().strip()}, status=500)
+    if not app_name:
+        return web.json_response({"error": "No app"}, status=400)
+    path = data.get("path") or app_name
+    try:
+        # 'start' resolves .lnk/.url and bare executable names alike
+        proc = await asyncio.create_subprocess_exec(
+            "cmd.exe", "/c", "start", "", path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        _, err = await proc.communicate()
+        if proc.returncode != 0:
+            return web.json_response(
+                {"error": err.decode("utf-8", "replace").strip()}, status=500)
+    except Exception as e:
+        return web.json_response({"error": str(e)}, status=500)
     return web.json_response({"ok": True})
 
 
 @require_auth
 async def handle_quit_app(request: web.Request):
-    """Quit an application."""
+    """Close an application by image name."""
     data = await request.json()
-    app_name = data.get("name", "")
-    script = f'tell application "{app_name}" to quit'
-    proc = await asyncio.create_subprocess_exec(
-        "osascript", "-e", script,
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-    )
-    await proc.communicate()
-    return web.json_response({"ok": True})
+    app_name = (data.get("name") or "").strip()
+    if not app_name:
+        return web.json_response({"error": "No app"}, status=400)
+    stem = os.path.splitext(os.path.basename(app_name))[0].lower()
+    closed = 0
+    for p in psutil.process_iter(["pid", "name"]):
+        try:
+            if os.path.splitext(p.info["name"] or "")[0].lower() == stem:
+                p.terminate()
+                closed += 1
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    return web.json_response({"ok": True, "closed": closed})
 
 
 # ═══════════════════════════════════════
@@ -859,27 +874,25 @@ async def handle_quit_app(request: web.Request):
 async def handle_system_action(request: web.Request):
     data = await request.json()
     action = data.get("action", "")
+    loop = asyncio.get_running_loop()
+
     if action == "sleep":
-        await (await asyncio.create_subprocess_exec(
-            "pmset", "sleepnow",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )).communicate()
+        # Refused on purpose: this machine is a headless server reached only over
+        # the network, and sleeping is exactly what made it unreachable before.
+        return web.json_response(
+            {"error": "Sleep is disabled on the PC - it is a headless server."},
+            status=409)
     elif action == "lock":
-        # Activate screensaver (locks if password required)
-        await (await asyncio.create_subprocess_exec(
-            "osascript", "-e", 'tell application "System Events" to keystroke "q" using {command down, control down}',
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )).communicate()
-    elif action == "brightness_up":
-        await (await asyncio.create_subprocess_exec(
-            "osascript", "-e", 'tell application "System Events" to key code 144',
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )).communicate()
-    elif action == "brightness_down":
-        await (await asyncio.create_subprocess_exec(
-            "osascript", "-e", 'tell application "System Events" to key code 145',
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )).communicate()
+        await loop.run_in_executor(None, ctypes.windll.user32.LockWorkStation)
+    elif action in ("brightness_up", "brightness_down"):
+        step = 10 if action == "brightness_up" else -10
+        script = (
+            "$m = Get-CimInstance -Namespace root/WMI -ClassName WmiMonitorBrightness "
+            "-ErrorAction SilentlyContinue; if ($m) { "
+            "$v = [Math]::Max(0,[Math]::Min(100,$m.CurrentBrightness + (" + str(step) + "))); "
+            "Invoke-CimMethod -Namespace root/WMI -ClassName WmiMonitorBrightnessMethods "
+            "-MethodName WmiSetBrightness -Arguments @{Brightness=$v;Timeout=1} }")
+        await _powershell(script)
     else:
         return web.json_response({"error": "Unknown action"}, status=400)
     return web.json_response({"ok": True, "action": action})
@@ -900,7 +913,7 @@ async def handle_screen_ws(request: web.Request):
     await ws.prepare(request)
 
     pw, ph = screencast.screen_size()      # pixels — must match the worker's grid
-    sw, sh = screencast.screen_points()    # points — what mouse events are in
+    sw, sh = screencast.screen_points()    # the space mouse events are in
     want_w = max(640, min(2560, int(request.query.get("w", 1720))))
     fps = max(2, min(20, int(request.query.get("fps", 10))))
     quality = max(20, min(90, int(request.query.get("q", 55))))
@@ -909,13 +922,13 @@ async def handle_screen_ws(request: web.Request):
     await ws.send_str(json.dumps({"type": "info", "screen": {"w": pw, "h": ph},
                                   "grid": geo, "fps": fps}))
 
-    venv_python = str(FIAOS_DIR / ".venv" / "bin" / "python3")
-    worker = await screencast.acquire_worker(venv_python, str(FIAOS_DIR / "screen_worker.py"),
+    worker = await screencast.acquire_worker(VENV_PYTHON, str(FIAOS_DIR / "screen_worker.py"),
                                              want_w, fps, quality)
-    inp = await screencast.start_input(venv_python, str(FIAOS_DIR / "input_helper.py"))
-    # The display is allowed to sleep like any Mac; -u wakes it the moment a
-    # viewer connects and -d holds it on only for as long as this socket lives.
-    awake = await asyncio.create_subprocess_exec("/usr/bin/caffeinate", "-d", "-u")
+    inp = await screencast.start_input(VENV_PYTHON, str(FIAOS_DIR / "input_helper.py"))
+    # Hold the display on for as long as someone is watching. caffeinate's
+    # Windows equivalent is a thread execution state, set on the display thread
+    # rather than a child process, so there is nothing to kill in the finally.
+    _display_hold(True)
     sent = {"tiles": 0, "bytes": 0}
 
     async def pump():
@@ -954,28 +967,245 @@ async def handle_screen_ws(request: web.Request):
         task.cancel()
         # The capture worker is parked, not killed: a phone backgrounding the
         # tab reconnects constantly and a cold worker costs ~166 ms every time.
+        # It still dies on its own after WARM_HOLD, and its parent going away
+        # stops it regardless, so nothing keeps capturing indefinitely.
         await screencast.release_worker(worker, want_w, fps, quality)
-        for proc in (inp, awake):
-            if proc.returncode is None:
-                try:
-                    proc.kill()               # no lingering input driver, ever
-                    await asyncio.wait_for(proc.wait(), timeout=3)
-                except Exception:
-                    pass
+        _display_hold(False)
+        if inp.returncode is None:
+            try:
+                inp.kill()                    # no lingering input driver, ever
+                await asyncio.wait_for(inp.wait(), timeout=3)
+            except Exception:
+                pass
     return ws
+
+
+# ═══════════════════════════════════════
+# MACHINE SWITCHING  (Mini / M5 / PC)
+# ═══════════════════════════════════════
+# The MINI/M5/PC buttons used to only set a cookie and reload — nothing on this
+# side ever read it, so picking M5 left you on the mini. Now the cookie actually
+# routes: every request and every websocket is proxied to that machine's own
+# FiaOS, which validates the same signed token, so there is no second login.
+#
+# Order matters. The M5 is wired to the mini by a Thunderbolt cable, which shows
+# up as its own subnet on both ends. Measured: 0.57 ms over
+# the cable versus 63 ms average and wildly unstable (4-113 ms) over wifi. The
+# cable is tried first and wifi is only the fallback, so switching to the M5 from
+# a phone is as quick as the mini itself.
+#
+# Written from the point of view of whichever machine is running: the entry for
+# MACHINE_KEY is emptied below, because "this machine" is never something to
+# proxy to. Left as the mini's literal table, the PC would proxy its own tab to
+# its own address and loop.
+# Set FIAOS_PEERS to your own map, e.g.
+#   FIAOS_PEERS="mini=10.0.0.5:9000;m5=10.0.0.9:9000,10.0.0.10:9000;pc=10.0.0.12:9000"
+# Comma-separated addresses for one machine are tried in order, so put a direct
+# cable link ahead of wifi. The defaults below are placeholders, not real hosts.
+_DEFAULT_TARGETS = {
+    "mini": ["10.0.0.5:9000"],
+    "m5":   ["10.0.0.9:9000", "10.0.0.10:9000"],   # fast link first, wifi second
+    "pc":   ["10.0.0.12:9000"],
+}
+
+
+def _parse_peers(spec: str) -> dict:
+    out = {}
+    for part in (spec or "").split(";"):
+        if "=" not in part:
+            continue
+        key, addrs = part.split("=", 1)
+        hosts = [a.strip() for a in addrs.split(",") if a.strip()]
+        if hosts:
+            out[key.strip()] = hosts
+    return out
+
+
+_ALL_TARGETS = _parse_peers(os.environ.get("FIAOS_PEERS", "")) or _DEFAULT_TARGETS
+TARGETS = {k: ([] if k == MACHINE_KEY else v) for k, v in _ALL_TARGETS.items()}
+# Never proxied: without these you could not log in, switch back, or sign out.
+LOCAL_ONLY = ("/login", "/api/login", "/logout", "/machines/", "/static/")
+_reachable: dict = {}          # "host:port" -> (ok, checked_at)
+
+
+async def _alive(hostport: str, ttl: float = 10.0) -> bool:
+    ok, when = _reachable.get(hostport, (False, 0.0))
+    if time.time() - when < ttl:
+        return ok
+    host, _, port = hostport.partition(":")
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, int(port)), timeout=1.5)
+        w.close()
+        ok = True
+    except Exception:
+        ok = False
+    _reachable[hostport] = (ok, time.time())
+    return ok
+
+
+async def pick_target(key: str):
+    """First reachable address for a machine — cable before wifi."""
+    for hostport in TARGETS.get(key, []):
+        if await _alive(hostport):
+            return hostport
+    return None
+
+
+async def handle_machine_probe(request: web.Request):
+    key = request.match_info.get("key", "")
+    if key == MACHINE_KEY:
+        return web.json_response({"up": True, "via": "local"})
+    hostport = await pick_target(key)
+    if not hostport:
+        return web.json_response({"up": False}, status=503)
+    return web.json_response({"up": True, "via": hostport})
+
+
+@web.middleware
+async def machine_proxy(request: web.Request, handler):
+    """Send everything to the chosen machine, websockets included."""
+    key = request.cookies.get("fia_target", MACHINE_KEY)
+    if (key == MACHINE_KEY or key not in TARGETS
+            or request.path.startswith(LOCAL_ONLY)):
+        return await handler(request)
+    hostport = await pick_target(key)
+    if not hostport:
+        return await handler(request)      # that machine is off — stay here
+
+    upgrade = request.headers.get("Upgrade", "").lower() == "websocket"
+    cookies = {k: v for k, v in request.cookies.items() if k != "fia_target"}
+
+    if upgrade:
+        client_ws = web.WebSocketResponse(max_msg_size=0, heartbeat=30)
+        await client_ws.prepare(request)
+        url = f"ws://{hostport}{request.rel_url}"
+        try:
+            async with aiohttp.ClientSession(cookies=cookies) as sess:
+                async with sess.ws_connect(url, max_msg_size=0, heartbeat=30) as up_ws:
+                    async def down():
+                        async for m in up_ws:
+                            if m.type == aiohttp.WSMsgType.BINARY:
+                                await client_ws.send_bytes(m.data)
+                            elif m.type == aiohttp.WSMsgType.TEXT:
+                                await client_ws.send_str(m.data)
+                            else:
+                                break
+                    pump = asyncio.create_task(down())
+                    try:
+                        async for m in client_ws:
+                            if m.type == aiohttp.WSMsgType.BINARY:
+                                await up_ws.send_bytes(m.data)
+                            elif m.type == aiohttp.WSMsgType.TEXT:
+                                await up_ws.send_str(m.data)
+                            else:
+                                break
+                    finally:
+                        pump.cancel()
+        except Exception as e:
+            print(f"[FiaOS] ws proxy to {key} ({hostport}) failed: {e}")
+        return client_ws
+
+    body = await request.read()
+    hop = {"host", "connection", "keep-alive", "transfer-encoding", "upgrade",
+           "proxy-authenticate", "proxy-authorization", "te", "trailers",
+           "content-length", "cookie"}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in hop}
+    try:
+        async with aiohttp.ClientSession(cookies=cookies) as sess:
+            async with sess.request(request.method, f"http://{hostport}{request.rel_url}",
+                                    headers=headers, data=body or None,
+                                    allow_redirects=False,
+                                    timeout=aiohttp.ClientTimeout(total=120)) as up:
+                raw = await up.read()
+                out = web.Response(status=up.status, body=raw)
+                for k, v in up.headers.items():
+                    if k.lower() not in hop and k.lower() != "content-encoding":
+                        out.headers[k] = v
+                return out
+    except Exception as e:
+        return web.Response(status=502, text=f"{key} unreachable via {hostport}: {e}")
+
+
+# ═══════════════════════════════════════
+# VNC BRIDGE  (the only way to reach the macOS login/lock screen)
+# ═══════════════════════════════════════
+# FiaOS's own screen view drives the Mac with synthetic CGEvents. macOS turns on
+# Secure Input at the lock screen precisely to block those, and before login this
+# agent is not running at all — so that view can never get past a password
+# prompt. Apple's own Screen Sharing runs privileged and CAN, so this bridges
+# noVNC in the browser to it: a WebSocket carrying raw RFB straight to
+# 127.0.0.1:5900. No websockify process, no extra port exposed; the bridge lives
+# behind the same FiaOS login as everything else, and 5900 stays on loopback.
+VNC_HOST, VNC_PORT = "127.0.0.1", 5900
+
+
+@require_auth
+async def handle_vnc_ws(request: web.Request):
+    ws = web.WebSocketResponse(protocols=("binary",), max_msg_size=0, heartbeat=30)
+    await ws.prepare(request)
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(VNC_HOST, VNC_PORT), timeout=8)
+    except (OSError, asyncio.TimeoutError) as e:
+        await ws.close(code=1011, message=str(e).encode()[:120])
+        return ws
+
+    async def tcp_to_ws():
+        try:
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    break
+                await ws.send_bytes(data)
+        except (ConnectionResetError, asyncio.CancelledError, RuntimeError):
+            pass
+
+    pump = asyncio.create_task(tcp_to_ws())
+    try:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.BINARY:
+                writer.write(msg.data)
+                await writer.drain()
+            elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                break
+    except (ConnectionResetError, asyncio.CancelledError):
+        pass
+    finally:
+        pump.cancel()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+    return ws
+
+
+@require_auth
+async def handle_vnc_page(request: web.Request):
+    """noVNC, pre-pointed at our bridge. Its own UI handles soft keyboards and
+    touch properly, which is the whole reason it is here."""
+    return web.HTTPFound("/static/novnc/vnc.html?path=api/vnc&autoconnect=1"
+                         "&resize=scale&reconnect=1&show_dot=1")
 
 
 # ═══════════════════════════════════════
 # TERMINAL WEBSOCKET
 # ═══════════════════════════════════════
 
-# Commands that would kill FiaOS itself — blocked in terminal
+# Commands that would kill FiaOS itself — blocked in terminal.
+# Windows spellings of the same footguns: the launchctl/pkill forms are kept so
+# a command pasted from a Mac is still caught rather than silently obeyed.
 _PROTECTED_PATTERNS = [
     r"launchctl\s+(unload|remove|stop).*fiaos",
-    r"launchctl\s+(unload|remove|stop).*caffeinate",
-    r"pkill.*(server\.py|fiaos|personaplex|caffeinate)",
+    r"pkill.*(server\.py|fiaos|personaplex)",
     r"kill.*(server\.py|fiaos)",
     r"killall.*[Pp]ython",
+    r"Stop-Process.*(python|server\.py|fiaos)",
+    r"taskkill.*(python|fiaos)",
+    r"Stop-ScheduledTask.*Fia",
+    r"Unregister-ScheduledTask.*Fia",
+    r"schtasks.*/(end|delete).*Fia",
+    r"Stop-Service.*[Ff]ia",
 ]
 
 
@@ -993,73 +1223,56 @@ async def handle_terminal_ws(request: web.Request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
-    # Spawn an interactive login zsh inside a PTY
-    master_fd, slave_fd = pty.openpty()
+    # Spawn PowerShell inside a ConPTY. Same idea as the Mac's openpty + zsh:
+    # a real console device, so anything that draws a TUI works.
+    import winpty
+
     env = os.environ.copy()
     env["TERM"] = "xterm-256color"
     env["COLORTERM"] = "truecolor"
-    env["LANG"] = env.get("LANG", "en_US.UTF-8")
     home = os.path.expanduser("~")
+    loop = asyncio.get_running_loop()
 
     try:
-        proc = subprocess.Popen(
-            ["/bin/zsh", "-l", "-i"],
-            stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-            env=env, cwd=home,
-            preexec_fn=os.setsid,
-            close_fds=True,
-        )
+        pty_proc = await loop.run_in_executor(None, lambda: winpty.PtyProcess.spawn(
+            ["powershell.exe", "-NoLogo", "-NoExit"],
+            cwd=home, env=env, dimensions=(30, 100)))
     except Exception as e:
         await ws.send_str(f"[shell spawn failed: {e}]\n")
-        os.close(master_fd); os.close(slave_fd)
         return ws
 
-    # Parent doesn't need slave end
-    os.close(slave_fd)
-
-    # Make master non-blocking
-    fl = fcntl.fcntl(master_fd, fcntl.F_GETFL)
-    fcntl.fcntl(master_fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
-
-    loop = asyncio.get_event_loop()
     closed = False
 
     async def pty_to_ws():
-        """Forward PTY output -> WebSocket as binary chunks."""
+        """Forward ConPTY output -> WebSocket as binary chunks.
+
+        pywinpty's read is blocking with no selectable handle, so it runs in a
+        worker thread. The browser side is unchanged: it still receives raw
+        binary exactly as it did from the Mac's file descriptor.
+        """
         while not closed:
             try:
-                # Wait until master_fd is readable
-                ready = asyncio.Event()
-                def _on_readable():
-                    if not ready.is_set():
-                        ready.set()
-                loop.add_reader(master_fd, _on_readable)
-                try:
-                    await ready.wait()
-                finally:
-                    try:
-                        loop.remove_reader(master_fd)
-                    except Exception:
-                        pass
-                # Drain whatever is available
-                try:
-                    data = os.read(master_fd, 65536)
-                except (BlockingIOError, InterruptedError):
-                    continue
-                except OSError:
-                    break
-                if not data:
-                    break
-                try:
-                    await ws.send_bytes(data)
-                except (ConnectionResetError, RuntimeError):
-                    break
+                data = await loop.run_in_executor(None, _pty_read, pty_proc)
             except asyncio.CancelledError:
                 break
-            except Exception:
+            if data is None:
+                break
+            if not data:
+                await asyncio.sleep(0.01)
+                continue
+            try:
+                await ws.send_bytes(data)
+            except (ConnectionResetError, RuntimeError):
                 break
 
     pty_task = asyncio.create_task(pty_to_ws())
+
+    def _write(text: str):
+        try:
+            pty_proc.write(text)
+            return True
+        except Exception:
+            return False
 
     try:
         async for msg in ws:
@@ -1072,11 +1285,14 @@ async def handle_terminal_ws(request: web.Request):
                         d = json.loads(payload)
                         kind = d.get("type")
                         if kind == "input":
-                            os.write(master_fd, d.get("data", "").encode("utf-8"))
+                            _write(d.get("data", ""))
                             handled = True
                         elif kind == "resize":
                             rows = int(d.get("rows", 24)); cols = int(d.get("cols", 80))
-                            fcntl.ioctl(master_fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+                            try:
+                                pty_proc.setwinsize(rows, cols)
+                            except Exception:
+                                pass
                             handled = True
                     except (json.JSONDecodeError, ValueError, KeyError, OSError):
                         handled = False
@@ -1085,11 +1301,9 @@ async def handle_terminal_ws(request: web.Request):
                     if _is_self_destructive(payload):
                         await ws.send_str("\n[BLOCKED] Can't kill FiaOS services from remote terminal.\n")
                     else:
-                        os.write(master_fd, (payload + "\n").encode("utf-8"))
+                        _write(payload + "\r")
             elif msg.type == aiohttp.WSMsgType.BINARY:
-                try:
-                    os.write(master_fd, msg.data)
-                except OSError:
+                if not _write(msg.data.decode("utf-8", "replace")):
                     break
             elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
                 break
@@ -1097,20 +1311,26 @@ async def handle_terminal_ws(request: web.Request):
         closed = True
         pty_task.cancel()
         try:
-            os.close(master_fd)
-        except OSError:
+            if pty_proc.isalive():
+                pty_proc.terminate(force=True)
+        except Exception:
             pass
-        if proc.poll() is None:
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGHUP)
-            except Exception:
-                pass
-            try:
-                proc.wait(timeout=3)
-            except Exception:
-                try: proc.kill()
-                except Exception: pass
     return ws
+
+
+def _pty_read(pty_proc):
+    """One blocking read. None means the shell is gone."""
+    try:
+        if not pty_proc.isalive():
+            return None
+        out = pty_proc.read(65536)
+        if out == "":
+            return b""
+        return out.encode("utf-8", "replace") if isinstance(out, str) else out
+    except EOFError:
+        return None
+    except Exception:
+        return None
 
 
 # ═══════════════════════════════════════
@@ -1123,21 +1343,23 @@ def _sweep_strays():
     They are children of the server; if the server is killed outright they lose
     their parent and would otherwise keep capturing the screen indefinitely.
     """
+    me = os.getpid()
     for name in ("screen_worker.py", "input_helper.py"):
-        try:
-            out = subprocess.run(["/usr/bin/pgrep", "-f", name],
-                                 capture_output=True, text=True).stdout.split()
-            for pid in out:
-                if int(pid) != os.getpid():
-                    os.kill(int(pid), signal.SIGKILL)
-                    print(f"[FiaOS] cleared stray {name} ({pid})")
-        except Exception:
-            pass
+        for p in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                if p.info["pid"] == me:
+                    continue
+                if any(name in str(a) for a in (p.info["cmdline"] or ())):
+                    p.kill()
+                    print(f"[FiaOS] cleared stray {name} ({p.info['pid']})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied, Exception):
+                pass
 
 
 def create_app() -> web.Application:
     _sweep_strays()
-    app = web.Application(client_max_size=100 * 1024 * 1024)  # 100MB upload limit
+    app = web.Application(client_max_size=100 * 1024 * 1024,  # 100MB upload limit
+                          middlewares=[machine_proxy])
 
     # Auth
     app.router.add_get("/login", handle_login_page)
@@ -1189,6 +1411,10 @@ def create_app() -> web.Application:
     # WebSockets
     app.router.add_get("/api/screen", handle_screen_ws)
     app.router.add_get("/api/terminal", handle_terminal_ws)
+    app.router.add_get("/api/vnc", handle_vnc_ws)
+    app.router.add_get("/vnc", handle_vnc_page)
+    app.router.add_get("/vnc/", handle_vnc_page)
+    app.router.add_get("/machines/probe/{key}", handle_machine_probe)
 
     # Static
     app.router.add_static("/static/", path=str(STATIC_DIR), name="static")
@@ -1196,8 +1422,48 @@ def create_app() -> web.Application:
     return app
 
 
+def _preflight():
+    """Fail loudly at startup rather than quietly serving a broken picture."""
+    screencast.ensure_dpi_aware()
+
+    # 1. The geometry check the M5 taught us. The server sizes the tile grid
+    # from screen_size(); the worker tiles the array grab() returns. If those
+    # two disagree the tiles land in the wrong slots and the screen looks
+    # doubled. Verified against a real capture, not against another metric.
+    from screen_worker import Capture
+    sw, sh = screencast.screen_size()
+    cap = Capture()
+    arr = cap.grab()
+    if arr is None:
+        raise SystemExit("[FiaOS] preflight: screen capture returned nothing")
+    ah, aw, _ = arr.shape
+    if (aw, ah) != (sw, sh):
+        raise SystemExit(
+            f"[FiaOS] preflight FAILED: screen_size() says {sw}x{sh} but the "
+            f"capture is {aw}x{ah}. The tile grid would not match the tiles. "
+            "This is the DPI-awareness trap — fix it before serving.")
+    cap._release()
+    px, py = screencast.screen_points()
+    print(f"[FiaOS] display: {sw}x{sh} pixels, input space {px}x{py} — grid matches capture")
+
+    # 2. The self-proxy loop. FIAOS_MACHINE defaults to "mini"; left at the
+    # default here, a request carrying fia_target=pc is not recognised as local,
+    # the middleware looks up "pc", finds this machine's own address and proxies
+    # to itself forever.
+    own = {a for addrs in __import__("psutil").net_if_addrs().values()
+           for a in (x.address for x in addrs)}
+    for hostport in TARGETS.get(MACHINE_KEY, []):
+        if hostport.split(":")[0] in own:
+            raise SystemExit(
+                f"[FiaOS] preflight FAILED: FIAOS_MACHINE={MACHINE_KEY} but "
+                f"TARGETS[{MACHINE_KEY}] contains this machine's own address "
+                f"({hostport}). Requests would proxy to themselves in a loop.")
+    print(f"[FiaOS] machine: {MACHINE_KEY}")
+
+
 if __name__ == "__main__":
     print(f"[FiaOS] Starting on port {PORT}")
     print(f"[FiaOS] Dashboard: http://localhost:{PORT}")
+    _preflight()
     app = create_app()
     web.run_app(app, host="0.0.0.0", port=PORT)

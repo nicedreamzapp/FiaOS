@@ -58,12 +58,31 @@ button {
 }
 button:hover { opacity: 0.9; }
 .error { color: #ef4444; font-size: 13px; margin-top: 12px; display: none; }
+
+/* Machine tabs — pick which Mac to sign in to before typing the password. */
+.machines { display:flex; justify-content:center; gap:0; margin:16px 0 22px;
+  border-bottom:1px solid #1e1e2e; }
+.mbtn {
+  background:none; border:0; font-family:inherit; cursor:pointer;
+  padding:8px 16px; font-size:12px; font-weight:600; letter-spacing:.6px;
+  text-transform:uppercase; color:#666;
+  display:flex; align-items:center; gap:6px;
+  border-bottom:2px solid transparent; margin-bottom:-1px;
+  transition:color .15s, border-color .15s;
+}
+.mbtn:hover { color:#e0e0e0; }
+.mbtn.here { color:#6366f1; border-bottom-color:#6366f1; }
+.mbtn .md { width:6px; height:6px; border-radius:50%; background:#666; flex:none; }
+.mbtn .md.up { background:#22c55e; }
+.mbtn .md.down { background:#ef4444; }
+.mbtn[data-live="down"] { opacity:.45; }
 </style>
 </head>
 <body>
 <div class="login-box">
     <h1>FiaOS</h1>
     <p class="subtitle">Remote Mac Control Center</p>
+    <div class="machines" id="machines"></div>
     <form id="loginForm">
         <input type="password" id="password" placeholder="Password" autofocus>
         <button type="submit">Sign In</button>
@@ -96,6 +115,28 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
         errEl.style.display = 'block';
     }
 });
+</script>
+<script>
+(function(){
+  const MACHINES=[{key:'mini',label:'Mini'},{key:'m5',label:'M5'},{key:'pc',label:'PC'}];
+  const m=document.cookie.match(/(?:^|;\s*)fia_target=([^;]+)/);
+  const here=m?decodeURIComponent(m[1]):'mini';
+  const box=document.getElementById('machines'); if(!box) return;
+  for(const mc of MACHINES){
+    const b=document.createElement('button');
+    b.className='mbtn'+(mc.key===here?' here':''); b.type='button';
+    b.title=mc.key===here?'signing in to this machine':'sign in to '+mc.label;
+    b.innerHTML='<span class="md" id="md-'+mc.key+'"></span>'+mc.label;
+    b.onclick=()=>{ if(mc.key===here) return;
+      document.cookie='fia_target='+mc.key+'; path=/; max-age=31536000; samesite=lax';
+      location.reload(); };
+    box.appendChild(b);
+    fetch('/machines/probe/'+mc.key,{cache:'no-store'})
+      .then(r=>mark(mc.key,r.status>=200&&r.status<400)).catch(()=>mark(mc.key,false));
+  }
+  function mark(k,up){ const d=document.getElementById('md-'+k); if(!d) return;
+    d.className='md '+(up?'up':'down'); if(!up) d.closest('.mbtn').dataset.live='down'; }
+})();
 </script>
 </body>
 </html>

@@ -7,8 +7,6 @@ import re
 import shlex
 import subprocess
 
-import anthropic
-
 # Commands that are always blocked
 BLOCKED_PATTERNS = [
     r"\brm\s+-rf\s+/\s*$",        # rm -rf /
@@ -23,31 +21,45 @@ BLOCKED_PATTERNS = [
     r"\bsudo\s+rm\s+-rf",          # sudo rm -rf
     r"\bnewfs\b",                   # newfs (macOS format)
     r"\bdiskutil\s+eraseDisk",     # erase disk
+    # Windows spellings of the same disasters
+    r"\bformat\s+[a-zA-Z]:",       # format a drive
+    # These were written with \\\\ -- a regex for TWO literal backslashes, which no
+    # real command has, so they never matched. Rewritten to fire on the actual
+    # forms, and scoped to absolute/home paths so a local `Remove-Item .\build
+    # -Recurse` still works.
+    r"(?i)\bRemove-Item\b(?=.*(?:-Recurse|-r\b))(?=.*(?:[A-Za-z]:\\|\\Users\b|\$env:USERPROFILE|\$HOME|~))",
+    r"(?i)\br(?:d|mdir)\s+/s\b",     # rd /s %USERPROFILE%
+    r"(?i)\bdel\s+/[sq]",             # del /s /q %USERPROFILE%\*
+    r"(?i)\bcipher\s+/w",             # wipe free space
+    r"Stop-Computer|Restart-Computer",
+    r"\bshutdown(\.exe)?\s+/",     # shutdown /s /r
     # Protect FiaOS services from being killed remotely
     r"\blaunchctl\s+(unload|remove|stop).*fiaos",  # can't unload FiaOS services
     r"\bpkill.*server\.py",        # can't kill FiaOS server
     r"\bkill.*server\.py",         # can't kill FiaOS server
     r"\bpkill.*fiaos",             # can't kill FiaOS
     r"\bpkill.*personaplex",       # managed by FiaOS, not user
-    r"\blaunchctl\s+(unload|remove|stop).*caffeinate",  # keep display awake
+    r"Stop-Process.*(python|server\.py|fiaos)",
+    r"taskkill.*(python|fiaos)",
+    r"(Stop|Unregister)-ScheduledTask.*Fia",
+    r"schtasks.*/(end|delete).*Fia",
 ]
 
-SYSTEM_PROMPT = """You are a macOS command translator. The user gives you natural language instructions.
+SYSTEM_PROMPT = """You are a Windows command translator. The user gives you natural language instructions.
 You respond with ONLY a JSON object — no markdown, no explanation.
 
 Format:
 {"command": "the shell command to run", "description": "one-line description of what this does"}
 
 Rules:
-- Output valid macOS (zsh/bash) commands
-- For "open" requests, use the `open` command (e.g., `open -a Safari`)
-- For file listing, use `ls`
-- For system info, use appropriate macOS commands (sysctl, df, top, etc.)
+- Output valid Windows PowerShell commands (they run via PowerShell)
+- For "open" requests, use `start` (e.g., `start brave`, `start notepad`)
+- For file listing, use `dir` or `Get-ChildItem`
+- For system info, use PowerShell cmdlets (Get-Process, Get-CimInstance, etc.)
 - If the request is a question that doesn't need a command (like "how are you"), respond with:
   {"command": null, "description": "your helpful answer here"}
-- NEVER output dangerous commands (rm -rf /, shutdown, reboot, mkfs, dd to devices)
-- Current working directory is the user's home: ~
-- The user's projects are in ~/Desktop/PROJECTS/
+- NEVER output dangerous commands (Remove-Item -Recurse on system paths, format, shutdown, restart)
+- Current working directory is the user's home: C:\\Users\\matt
 - Keep commands simple and safe
 """
 
@@ -74,17 +86,15 @@ def is_command_safe(cmd: str) -> bool:
     return True
 
 
-# Claude Code's binary. Found on PATH so this works wherever npm/installer put
-# it; the ~/.local/bin fallback covers a login shell PATH that launchd didn't get.
 import shutil
-CLAUDE_BIN = (shutil.which("claude")
-              or os.path.expanduser("~/.local/bin/claude"))
+
+CLAUDE_BIN = (shutil.which("claude") or shutil.which("claude.cmd")
+              or os.path.join(os.environ.get("APPDATA", ""), "npm", "claude.cmd"))
 
 
 async def interpret_with_claude(user_input: str) -> dict:
     """Use local Claude Code (Matt's Max plan, no API cost) to interpret natural
-    language into a JSON command. Runs `claude -p` as a subprocess on this mini —
-    keychain-unlocked under the GUI login that started FiaOS, so OAuth works."""
+    language into a JSON command. Runs `claude -p` as a subprocess."""
     prompt = f"{SYSTEM_PROMPT}\n\nUser: {user_input}\n\nRespond with ONLY the JSON object:"
     proc = await asyncio.create_subprocess_exec(
         CLAUDE_BIN, "-p", prompt,

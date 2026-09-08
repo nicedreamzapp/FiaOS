@@ -30,3 +30,11 @@ personaplex_mlx/
 *.local.plist
 .env
 .env.local
+
+# Personal pages / photos that live in the running static dir but are not
+# part of FiaOS — never publish these
+static/kids-game*.html
+static/weekly-rhythm.html
+static/*.png
+static/*.jpg
+static/*.bak-*
