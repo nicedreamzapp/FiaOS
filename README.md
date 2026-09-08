@@ -4,7 +4,7 @@
 
 ### Open a browser tab. You're now driving your computer.
 
-**Live remote desktop · real PTY shell (Claude Code, vim, top — all real) · on-device voice agent · macOS *and* Windows · many machines, one URL · self-hosted · zero cloud · zero API keys**
+**Live remote desktop · real PTY shell (Claude Code, vim, top — all real) · macOS *and* Windows · every machine you own behind one URL · self-hosted · zero cloud · zero API keys**
 
 > 💡 **Looking for the iMessage version?** See [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone) — same idea, async text-driven workflow. **FiaOS is the live one** — open a web page, you *are* on the machine.
 
@@ -14,13 +14,12 @@
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-22c55e.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-ready-eab308?style=for-the-badge)](https://claude.com/claude-code)
 [![Self-Hosted](https://img.shields.io/badge/Self--Hosted-100%25-22c55e?style=for-the-badge)](https://github.com/awesome-selfhosted/awesome-selfhosted)
-[![Local AI](https://img.shields.io/badge/Local%20AI-on--device-ef4444?style=for-the-badge)](https://github.com/ml-explore/mlx)
 
 [![GitHub stars](https://img.shields.io/github/stars/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/nicedreamzapp/FiaOS?style=social)](https://github.com/nicedreamzapp/FiaOS/network/members)
 [![Sponsor](https://img.shields.io/github/sponsors/nicedreamzapp?style=social&logo=github-sponsors)](https://github.com/sponsors/nicedreamzapp)
 
-> **Tags:** `claude-code` · `mac-mini` · `apple-silicon` · `windows` · `mlx` · `local-ai` · `on-device-ai` · `self-hosted` · `homelab` · `headless-mac` · `vnc-alternative` · `ssh-alternative` · `web-terminal` · `pty` · `conpty` · `xterm.js` · `ai-agent` · `voice-assistant`
+> **Tags:** `claude-code` · `mac-mini` · `apple-silicon` · `windows` · `remote-control` · `self-hosted` · `homelab` · `headless-mac` · `vnc-alternative` · `ssh-alternative` · `web-terminal` · `pty` · `conpty` · `xterm.js` · `ai-agent` · `remote-desktop`
 
 </div>
 
@@ -35,9 +34,9 @@ Three things, that's it:
 | 🖥️ | **Screen** | Live view of the desktop, refreshing continuously. Click anywhere to drive the mouse. Type to send keys. |
 |---|---|---|
 | 💻 | **Terminal** | Real PTY-backed interactive shell — `zsh` on macOS, PowerShell in a ConPTY on Windows. `claude` works. `vim` works. `top` works. `cd` actually sticks. Rendered with [xterm.js](https://xtermjs.org/) so colors and ANSI escapes are pixel-perfect. |
-| 🎙️ | **Voice** | Push-to-talk to a local on-device voice model ([PersonaPlex MLX](https://github.com/nicedreamzapp/)) on Apple Silicon. Loads on demand, idles out to free RAM. |
+| 🔀 | **Machines** | MINI · M5 · PC across the top. Tap one and the whole page is that computer — same login, same session, no reconnect. |
 
-And since **v2**, one more: those three things for **every machine you own, behind one URL and one password.**
+Two panels and a machine picker. That's the whole product.
 
 ---
 
@@ -81,7 +80,17 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 ## 🎬 In action
 
-### Run Claude Code on your Mac mini, from anywhere
+### Every machine, one login
+
+<div align="center">
+
+<img src="docs/screenshots/machines.png" alt="FiaOS login page with MINI, M5 and PC tabs, each showing a live green status dot" width="620">
+
+</div>
+
+> *The dots are real — each tab probes its own machine. Log in once and every green one is yours.*
+
+### Run Claude Code on any of them, from anywhere
 
 <div align="center">
 
@@ -90,14 +99,6 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 </div>
 
 > *The Terminal tab is a **real PTY**. That means anything that needed a TTY — `claude`, `vim`, `htop`, `gh`, `python -i` — just works. No hacks, no faking it.*
-
-### Voice agent, one tap away
-
-<div align="center">
-
-![Voice tab — push-to-talk to a local on-device voice agent](docs/screenshots/voice.png)
-
-</div>
 
 ### Phone-friendly out of the box
 
@@ -115,7 +116,7 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 `tailscale` + an SSH client + a VNC viewer can each do a piece of this. FiaOS bundles them into **one auth-gated web page** so you can drive your whole fleet from any device — without installing anything client-side.
 
-The Terminal tab specifically gets you a working **Claude Code session on your Mac mini, from your phone**. That's the killer feature this whole thing was built around. The machine tabs are what happened when one Mac turned into three computers.
+The Terminal tab specifically gets you a working **Claude Code session on your Mac, from your phone**. That's the killer feature this whole thing was built around. The machine tabs are what happened when one Mac turned into three computers.
 
 ---
 
@@ -128,7 +129,6 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 - **🔀 Mixed Mac + Windows shop** — One page, one password, both operating systems. Stop keeping two remote-access stacks alive.
 - **🛡️ Self-hosted Cursor / Copilot Workspace alternative** — Same kind of agentic coding loop, on hardware you own, with no SaaS in the path.
 - **📡 Replace SSH + VNC + RDP** — One web page does what used to take three apps and a subscription.
-- **🎙️ Local voice assistant on Apple Silicon** — On-device MLX speech model. No audio leaves your house.
 - **✈️ Travel light** — Borrow any laptop, hit your URL, you're back at your dev environment.
 
 ---
@@ -137,15 +137,15 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 
 > **Already using [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone)?** That's the **async** sibling — text a command from anywhere, your Mac executes it, you get screenshots/videos back as iMessages. **FiaOS is the live mode** — open a web page, you're sitting at the machine in real time. Different superpowers, same family.
 
-| Tool | Mode | Live screen | Real shell | Voice | Multi-machine | Mobile | Self-hosted | Native client? |
-|---|---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| **FiaOS** | **Live** | ✅ | ✅ PTY | ✅ on-device | ✅ **one URL** | ✅ | ✅ | ❌ none |
-| `claude-screen-to-phone` | **Async (iMessage)** | ❌ | ⚠️ via cmd | ❌ | ❌ | ✅ | ✅ | ✅ Messages |
-| Tailscale + SSH | Live shell | ❌ | ✅ | ❌ | ⚠️ per-host | ⚠️ | ✅ | ✅ required |
-| VNC / RDP / ARD | Live screen | ✅ | ❌ | ❌ | ⚠️ per-host | ⚠️ | ✅ | ✅ required |
-| Cursor mobile | Async cloud | ❌ | ⚠️ | ❌ | ❌ | ✅ | ❌ cloud | ✅ required |
-| iSH / Termius | Live shell | ❌ | ✅ | ❌ | ⚠️ per-host | ✅ | ⚠️ | ✅ required |
-| ChatGPT app | Cloud chat | ❌ | ❌ | ✅ cloud | ❌ | ✅ | ❌ cloud | ✅ required |
+| Tool | Mode | Live screen | Real shell | Multi-machine | Mobile | Self-hosted | Native client? |
+|---|---|:-:|:-:|:-:|:-:|:-:|:-:|
+| **FiaOS** | **Live** | ✅ | ✅ PTY | ✅ **one URL** | ✅ | ✅ | ❌ none |
+| `claude-screen-to-phone` | **Async (iMessage)** | ❌ | ⚠️ via cmd | ❌ | ✅ | ✅ | ✅ Messages |
+| Tailscale + SSH | Live shell | ❌ | ✅ | ⚠️ per-host | ⚠️ | ✅ | ✅ required |
+| VNC / RDP / ARD | Live screen | ✅ | ❌ | ⚠️ per-host | ⚠️ | ✅ | ✅ required |
+| Cursor mobile | Async cloud | ❌ | ⚠️ | ❌ | ✅ | ❌ cloud | ✅ required |
+| iSH / Termius | Live shell | ❌ | ✅ | ⚠️ per-host | ✅ | ⚠️ | ✅ required |
+| ChatGPT app | Cloud chat | ❌ | ❌ | ❌ | ✅ | ❌ cloud | ✅ required |
 
 ---
 
@@ -211,10 +211,6 @@ FIAOS_PASSWORD='your-strong-password' .venv/bin/python3 server.py
 
 Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them in the `map` block. Home network only? Skip this entirely and hit `http://your-machine.local:9000`.
 
-### 5. Voice mode (optional, macOS)
-
-Voice requires [PersonaPlex MLX](https://github.com/nicedreamzapp/) and Hugging Face access to the model weights. Once it's `pip install`-ed, FiaOS spawns it on demand when you hit the Voice tab and shuts it down after 60 s idle.
-
 ---
 
 ## 🔒 Security
@@ -239,9 +235,6 @@ executor.py             ─ natural-language → shell helper (/api/command)
 screencast.py           ─ live screen encoder
 screen_worker.py        ─ capture worker process
 input_helper.py         ─ Quartz mouse/keyboard event injection
-fia_ptt.py              ─ voice push-to-talk WebSocket bridge
-fia_talk.py             ─ voice TTS layer
-sample_voices.py        ─ voice sample preview helper
 
 windows/                ─ the Windows port (same routes, native Win32 underneath)
   server.py             ─ ConPTY terminal, GDI capture, machine-to-machine proxy
@@ -253,11 +246,9 @@ windows/                ─ the Windows port (same routes, native Win32 undernea
   requirements-windows.txt
 
 static/
-  index.html            ─ single-page UI (Screen / Terminal / Voice / machine tabs)
+  index.html            ─ single-page UI (Screen / Terminal + machine tabs)
   login.html            ─ password form + machine picker with liveness dots
-  voice-picker.html     ─ voice selection UI
   vendor/               ─ xterm.js
-  *.js *.wasm           ─ Opus codec workers for voice streaming
 
 deploy/
   nginx-fia.conf        ─ multi-machine nginx site (cookie routing + probes + fallback)
@@ -276,8 +267,7 @@ watchdog.sh             ─ keep-alive checker
 - **Backend:** Python 3.12 · [`aiohttp`](https://docs.aiohttp.org/) · [`psutil`](https://psutil.readthedocs.io/)
 - **Terminal:** [`pty`](https://docs.python.org/3/library/pty.html) on macOS · [ConPTY via `pywinpty`](https://github.com/andfoy/pywinpty) on Windows
 - **Screen + input:** [`Quartz`](https://pypi.org/project/pyobjc-framework-Quartz/) on macOS · Win32 `SendInput` + GDI on Windows
-- **Frontend:** vanilla JS · [xterm.js 5.3](https://xtermjs.org/) · WebSocket · WebAudio
-- **Voice:** [MLX](https://github.com/ml-explore/mlx) on Apple Silicon (via PersonaPlex)
+- **Frontend:** vanilla JS · [xterm.js 5.3](https://xtermjs.org/) · WebSocket · Canvas
 - **Edge:** OpenSSH reverse forwarding · nginx HTTPS termination + cookie-based upstream routing
 
 ---
@@ -309,21 +299,15 @@ VNC streams the framebuffer continuously; FiaOS ships a JPEG only when the scree
 </details>
 
 <details>
-<summary><strong>Does the voice agent send audio to the cloud?</strong></summary>
-
-**No.** Voice runs entirely on-device using MLX on Apple Silicon (via PersonaPlex). Your audio never leaves the machine. There are no API keys to set.
-</details>
-
-<details>
 <summary><strong>Can I use this without exposing it to the internet?</strong></summary>
 
 Yes — skip step 4. Run the server, hit `http://your-machine.local:9000` from any device on your home network. No tunnel, no nginx, no domain.
 </details>
 
 <details>
-<summary><strong>Why is voice macOS-only?</strong></summary>
+<summary><strong>What happened to the voice tab?</strong></summary>
 
-The voice model uses MLX, which is Apple-Silicon-only. Everything else — terminal, screen, input, files, processes, clipboard — works on both platforms. A Windows voice tab would need a different inference backend.
+It was in the April release and has since been pulled out of FiaOS — voice now lives in its own project instead of riding along in the server. This repo is screen, terminal and machines. The old `fia_ptt.py` / `fia_talk.py` helpers were dropped in v2 because nothing shipped was using them any more.
 </details>
 
 <details>
@@ -335,7 +319,7 @@ Of course. FiaOS is a remote-control web UI — Claude Code is just one of many 
 <details>
 <summary><strong>How is FiaOS different from a Tailscale + SSH setup?</strong></summary>
 
-Tailscale + SSH gives you a terminal, per host. FiaOS gives you a terminal **plus** a live screen viewer **plus** a voice agent **plus** a mobile-friendly UI **plus** every machine behind one tab bar — all behind one password on a single web page, with zero client-side install.
+Tailscale + SSH gives you a terminal, per host. FiaOS gives you a terminal **plus** a live screen viewer **plus** a mobile-friendly UI **plus** every machine behind one tab bar — all behind one password on a single web page, with zero client-side install.
 </details>
 
 <details>
