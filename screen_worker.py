@@ -56,6 +56,7 @@ def main():
     out = sys.stdout.buffer
     hashes: dict[int, bytes] = {}
     interval = 1.0 / fps
+    paused = False
 
     while True:
         started = time.monotonic()
@@ -65,11 +66,32 @@ def main():
         if os.getppid() == 1:
             return
 
-        # a single 'R' on stdin means the viewer wants everything again
+        # stdin commands from the server:
+        #   R  the viewer wants every tile again
+        #   P  no viewer is attached -- stop capturing entirely
+        # Parked used to mean "keep grabbing the screen at full fps into a pipe
+        # nobody is reading." That burned CPU, and on a laptop battery, for as
+        # long as the worker was held warm. Now P blocks here until the server
+        # sends anything (acquire_worker sends R), so an unwatched machine does
+        # no work at all.
         while select.select([sys.stdin], [], [], 0)[0]:
-            if not sys.stdin.readline():
+            line = sys.stdin.readline()
+            if not line:
                 return
+            paused = line.startswith("P")
             hashes.clear()
+
+        while paused:
+            if os.getppid() == 1:
+                return
+            # 5 s so an orphaned worker still notices its server went away
+            if select.select([sys.stdin], [], [], 5.0)[0]:
+                line = sys.stdin.readline()
+                if not line:
+                    return
+                if not line.startswith("P"):
+                    paused = False
+                    hashes.clear()
 
         frame = grab()
         if frame is None:

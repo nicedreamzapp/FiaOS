@@ -166,16 +166,27 @@ def parent_gone():
 # select() on Windows only accepts sockets, never a pipe or a console handle,
 # so the non-blocking poll the Mac build used cannot work here. A daemon thread
 # blocking on readline costs nothing and says the same thing.
-_stdin = {"resend": False, "eof": False}
+# Commands: "P" means no viewer is attached -- stop capturing entirely; anything
+# else means resend every tile. Parked used to mean "keep grabbing the screen at
+# full fps into a pipe nobody is reading," which burned CPU on a machine nobody
+# was looking at.
+_stdin = {"resend": False, "eof": False, "paused": False}
+_wake = threading.Event()
 
 
 def _stdin_reader():
     try:
-        for _ in sys.stdin:
-            _stdin["resend"] = True
+        for line in sys.stdin:
+            if line.startswith("P"):
+                _stdin["paused"] = True
+            else:
+                _stdin["paused"] = False
+                _stdin["resend"] = True
+            _wake.set()
     except Exception:
         pass
     _stdin["eof"] = True
+    _wake.set()
 
 
 def main():
@@ -202,6 +213,15 @@ def main():
 
         if _stdin["eof"] or parent_gone():
             return
+
+        # Paused: capture nothing at all until the server sends a command.
+        # 5 s so an orphaned worker still notices its server went away.
+        while _stdin["paused"]:
+            if _stdin["eof"] or parent_gone():
+                return
+            _wake.wait(5.0)
+            _wake.clear()
+
         if _stdin["resend"]:
             _stdin["resend"] = False
             hashes.clear()

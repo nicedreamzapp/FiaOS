@@ -581,7 +581,23 @@ async function updateStatus() {
 screenConnect();
 connectTerminal();
 updateStatus();
-setInterval(updateStatus, 10000);
+// Only poll while someone is actually looking. A backgrounded tab -- a phone in
+// a pocket, a laptop lid shut -- used to keep asking the remote machine for CPU
+// and RAM every 10 s forever. Hidden means no polling at all; showing the page
+// again refreshes immediately.
+let statusTimer = null;
+function startStatusPolling() {
+    if (statusTimer) return;
+    updateStatus();
+    statusTimer = setInterval(updateStatus, 10000);
+}
+function stopStatusPolling() {
+    if (statusTimer) { clearInterval(statusTimer); statusTimer = null; }
+}
+document.addEventListener('visibilitychange', () => {
+    document.hidden ? stopStatusPolling() : startStatusPolling();
+});
+if (!document.hidden) startStatusPolling();
 </script>
 <script>
 /* --- machine tabs ------------------------------------------------------

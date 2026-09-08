@@ -171,6 +171,15 @@ async def release_worker(proc, want_w, fps, quality):
     if proc is None or proc.returncode is not None:
         return
     await _drop_warm()
+    # Park means PAUSED, not idling: tell the worker to stop capturing. Holding
+    # the process costs a few MB of RAM; holding it capturing cost real CPU on a
+    # machine nobody was looking at.
+    if proc.stdin:
+        try:
+            proc.stdin.write(b"P\n")
+            await proc.stdin.drain()
+        except Exception:
+            pass
     _WARM.update({"proc": proc, "key": (want_w, fps, quality),
                   "expires": time.time() + WARM_HOLD})
     asyncio.get_running_loop().call_later(WARM_HOLD + 1, lambda: asyncio.ensure_future(_expire()))
