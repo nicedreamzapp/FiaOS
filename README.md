@@ -27,6 +27,10 @@
 
 ## ⚡ What it is
 
+**FiaOS is a small Python web server you run on each of your computers; it gives you that machine's live screen and a real terminal in any browser, behind one password.**
+
+**Proof it works:** real screenshots from the running app are [below](#-in-action), and the repo ships its own tests. [`tests/test_auth.py`](tests/test_auth.py) runs 62 auth and session checks against the real `server.py` (62 passed, 0 failed on a clean run), and [`tests/test_infra.sh`](tests/test_infra.sh) breaks a live deployment on purpose in 15 failure scenarios and measures recovery. See [`tests/README.md`](tests/README.md).
+
 A single page that turns your computer into a **fully remote-controlled headless dev box** — reachable from any device with a browser. Phone. Laptop. Friend's PC. Doesn't matter.
 
 Three things, that's it:
@@ -37,6 +41,22 @@ Three things, that's it:
 | 🔀 | **Machines** | MINI · M5 · PC across the top. Tap one and the whole page is that computer — same login, same session, no reconnect. |
 
 Two panels and a machine picker. That's the whole product.
+
+---
+
+## 👷 What I built
+
+Built by **Matt Macosko**. Everything below is his code in this repo:
+
+- **macOS server** ([`server.py`](server.py)): aiohttp routes, PTY terminal over WebSocket, screen, files, clipboard, apps, HMAC-signed sessions with logout revocation and per-IP login rate limiting.
+- **Live screen pipeline** ([`screencast.py`](screencast.py), [`screen_worker.py`](screen_worker.py), [`input_helper.py`](input_helper.py)): hashed frames so an unchanged desktop costs nothing, plus Quartz mouse and keyboard injection.
+- **Windows port** ([`windows/`](windows/)): ConPTY terminal, BitBlt capture, DPI-aware `SendInput`, machine-to-machine LAN proxy, noVNC bridge, and the [`run_fiaos.ps1`](windows/run_fiaos.ps1) launcher.
+- **Web UI** ([`static/index.html`](static/index.html), [`static/login.html`](static/login.html)): single-page Screen and Terminal views, machine tabs with liveness dots.
+- **Natural-language command helper** ([`executor.py`](executor.py), [`windows/executor.py`](windows/executor.py)): turns a sentence into a shell command with blocked-command guards.
+- **Multi-machine edge** ([`deploy/nginx-fia.conf`](deploy/nginx-fia.conf), [`deploy/tunnel_with_stale_port_clear.sh`](deploy/tunnel_with_stale_port_clear.sh), [`deploy/sshd-tunnel-keepalive.conf`](deploy/sshd-tunnel-keepalive.conf)): cookie routing, dead-machine fallback, and self-healing reverse tunnels.
+- **Tests** ([`tests/`](tests/)): the auth suite and live failure-scenario suite above.
+
+**Upstream, not his:** [xterm.js](https://xtermjs.org/) (vendored in `static/vendor/`), [aiohttp](https://docs.aiohttp.org/), [psutil](https://psutil.readthedocs.io/), [pywinpty](https://github.com/andfoy/pywinpty), PyObjC Quartz, Pillow, NumPy, nginx and OpenSSH. The natural-language helper shells out to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) and falls back to a local [Ollama](https://ollama.com/) model (`qwen3-coder`). The voice work listed in [CREDITS.md](CREDITS.md) (PersonaPlex on MLX and friends) is upstream too.
 
 ---
 
@@ -65,12 +85,12 @@ FiaOS started on Apple Silicon. It now runs on Windows 10/11 too — a real port
 |---|---|
 | `pty` + `zsh -l -i` | **ConPTY** via [`pywinpty`](https://github.com/andfoy/pywinpty) + PowerShell |
 | Quartz `CGEvent` mouse/keyboard | **Win32 `SendInput`**, DPI-aware |
-| `screencapture` | **native GDI/DXGI capture** |
+| `screencapture` | **native GDI capture** (`BitBlt` into a reused DIB section) |
 | `caffeinate` keeps the display awake | **`SetThreadExecutionState`** |
 | `pbcopy` / `pbpaste` | **`Get-Clipboard` / `Set-Clipboard`**, UTF-8 pinned on both ends |
 | `osascript` app control | **Start Menu `.lnk` enumeration** |
 | LaunchAgent | [`run_fiaos.ps1`](windows/run_fiaos.ps1) — restart loop with log rotation |
-| — | **noVNC tab**, for when a polled screenshot isn't enough |
+| — | **noVNC tab**, for when a polled screenshot isn't enough (bring your own noVNC files and VNC server, see [Known limits](#-known-limits)) |
 
 Same routes, same UI, same password, same session tokens. Switch to the PC tab and it looks and behaves exactly like the Macs.
 
@@ -160,7 +180,11 @@ git clone https://github.com/nicedreamzapp/FiaOS.git
 cd FiaOS
 python3.12 -m venv .venv
 .venv/bin/pip install -r requirements.txt
+# the server also imports these, which requirements.txt does not list yet:
+.venv/bin/pip install anthropic pillow pyobjc-framework-Quartz
 ```
+
+> Grant your terminal (or the LaunchAgent's Python) **Screen Recording** in System Settings > Privacy & Security, or the screen view returns an error instead of your desktop.
 
 ### Windows
 
@@ -169,9 +193,12 @@ python3.12 -m venv .venv
 ```powershell
 git clone https://github.com/nicedreamzapp/FiaOS.git
 cd FiaOS\windows
+Copy-Item -Recurse ..\static .\static   # the Windows server serves windows\static, which isn't committed
 py -3.12 -m venv .venv
 .venv\Scripts\pip install -r requirements-windows.txt
 ```
+
+Then put `FIAOS_PASSWORD=...` and `FIAOS_MACHINE=pc` in `C:\ProgramData\fia\fiaos.env`.
 
 ### 1. Set a password (required — the server refuses to start without it)
 
@@ -207,6 +234,7 @@ FIAOS_PASSWORD='your-strong-password' .venv/bin/python3 server.py
 | File | What it does |
 |---|---|
 | [`deploy/tunnel_to_vps.sh`](deploy/tunnel_to_vps.sh) | Reverse SSH tunnel from a machine to your VPS |
+| [`deploy/tunnel_with_stale_port_clear.sh`](deploy/tunnel_with_stale_port_clear.sh) | Same tunnel, but clears a dead VPS port first so a sleeping laptop reconnects right away (pair with [`sshd-tunnel-keepalive.conf`](deploy/sshd-tunnel-keepalive.conf) on the VPS) |
 | [`deploy/nginx-fia.conf`](deploy/nginx-fia.conf) | The full multi-machine nginx site — cookie routing, per-machine liveness probes, WebSocket upgrade, static caching, dead-machine fallback |
 
 Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them in the `map` block. Home network only? Skip this entirely and hit `http://your-machine.local:9000`.
@@ -224,6 +252,19 @@ Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them 
 | ⚠️ | Terminal is a real PTY — anyone with the password has the same power as SSH. **Treat the password like an SSH key.** |
 | ⚠️ | The blocked-command regexes stop the obvious footguns (`rm -rf /`, `rd /s C:\…`, "kill FiaOS itself"). They are a **guardrail on the natural-language command path, not a security boundary.** A real shell can run arbitrary scripts. |
 | 💡 | Want 2FA? Put FiaOS behind a reverse proxy that does it (Cloudflare Access, Authelia, etc.). |
+
+---
+
+## 🚧 Known limits
+
+What does not work yet, or needs manual steps:
+
+- **`requirements.txt` and `pyproject.toml` are left over from the voice era.** They still describe the PersonaPlex/MLX package and pull in `mlx`, `rustymimi`, `sounddevice` and friends that the screen and terminal don't need, while missing `anthropic`, `pillow` and `pyobjc-framework-Quartz` that they do (hence the extra install line above).
+- **`start.sh`, `watchdog.sh` and `start_personaplex.sh` still reference the removed voice agent.** They try to launch `personaplex_mlx`, which isn't in this repo. Use `launch_server.sh` or the LaunchAgent to run FiaOS itself.
+- **The Windows noVNC tab isn't turnkey.** The `/vnc` route redirects to `/static/novnc/`, which isn't bundled, and the bridge expects a VNC server on `127.0.0.1:5900`.
+- **The shipped nginx config has the PC's dead-machine fallback turned off** (`$fia_fallback_ok` is `0` for `pc`). Flip it to `1` once your PC is serving.
+- **`tests/test_infra.sh` needs a real deployment** (`FIA_VPS`, `FIA_URL`, and the reference setup's LaunchAgents). `tests/test_auth.py` runs anywhere.
+- **Windows volume** is media keys only, as noted above.
 
 ---
 
@@ -254,10 +295,18 @@ deploy/
   nginx-fia.conf        ─ multi-machine nginx site (cookie routing + probes + fallback)
   tunnel_to_vps.sh      ─ reverse SSH tunnel
 
+  tunnel_with_stale_port_clear.sh ─ tunnel that clears a dead VPS port before reconnecting
+  sshd-tunnel-keepalive.conf      ─ VPS sshd setting that reaps dead tunnels in ~90s
+
+tests/
+  test_auth.py          ─ 62 auth/session checks against the real server.py
+  test_infra.sh         ─ 15 live failure scenarios (needs a real deployment)
+  regress_logout.py     ─ does a logged-out token still work?
+
 examples/               ─ LaunchAgent plist template
 launch_server.sh        ─ venv launcher used by the LaunchAgent
-start.sh                ─ dev helper (server + tunnel + caffeinate)
-watchdog.sh             ─ keep-alive checker
+start.sh                ─ dev helper (server + tunnel + caffeinate; still tries to start voice)
+watchdog.sh             ─ keep-alive checker (still tries to start voice)
 ```
 
 ---
@@ -266,7 +315,7 @@ watchdog.sh             ─ keep-alive checker
 
 - **Backend:** Python 3.12 · [`aiohttp`](https://docs.aiohttp.org/) · [`psutil`](https://psutil.readthedocs.io/)
 - **Terminal:** [`pty`](https://docs.python.org/3/library/pty.html) on macOS · [ConPTY via `pywinpty`](https://github.com/andfoy/pywinpty) on Windows
-- **Screen + input:** [`Quartz`](https://pypi.org/project/pyobjc-framework-Quartz/) on macOS · Win32 `SendInput` + GDI on Windows
+- **Screen + input:** [`Quartz`](https://pypi.org/project/pyobjc-framework-Quartz/) + Pillow on macOS · Win32 `SendInput` + GDI `BitBlt` on Windows
 - **Frontend:** vanilla JS · [xterm.js 5.3](https://xtermjs.org/) · WebSocket · Canvas
 - **Edge:** OpenSSH reverse forwarding · nginx HTTPS termination + cookie-based upstream routing
 
@@ -307,7 +356,7 @@ Yes — skip step 4. Run the server, hit `http://your-machine.local:9000` from a
 <details>
 <summary><strong>What happened to the voice tab?</strong></summary>
 
-It was in the April release and has since been pulled out of FiaOS — voice now lives in its own project instead of riding along in the server. This repo is screen, terminal and machines. The old `fia_ptt.py` / `fia_talk.py` helpers were dropped in v2 because nothing shipped was using them any more.
+It was in the April release and has since been pulled out of FiaOS — voice now lives in its own project instead of riding along in the server. This repo is screen, terminal and machines. The old `fia_ptt.py` / `fia_talk.py` helpers were dropped in v2 because nothing shipped was using them any more. A few leftovers remain (see [Known limits](#-known-limits)).
 </details>
 
 <details>
