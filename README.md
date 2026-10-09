@@ -378,6 +378,10 @@ Sort of. Cursor mobile is a polished AI-coding UI tied to a SaaS. FiaOS is a sel
 
 ---
 
+If you want the Claude Code session in the Terminal tab to run on local MLX models with no API key, I made [claude-code-local](https://github.com/nicedreamzapp/claude-code-local) for that on the Mac.
+
+---
+
 ## 💚 Sponsor
 
 FiaOS is free and open source. If it is useful to you, you can sponsor the work at [github.com/sponsors/nicedreamzapp](https://github.com/sponsors/nicedreamzapp).
