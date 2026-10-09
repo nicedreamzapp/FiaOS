@@ -71,7 +71,7 @@ You get **machine tabs** across the top — MINI · M5 · PC. Tap one, and the e
 | 🍪 | **The cookie is the router.** Picking a tab sets `fia_target`; nginx maps that to the tunnel for that machine. Nothing else about the request changes. |
 | 🟢 | **Honest liveness dots.** Each tab probes its own machine's login page. Green means that box is genuinely answering — not that the tab exists. |
 | 🔀 | **Dead-machine fallback.** If the machine you last picked is powered off, nginx serves an always-on one instead and rewrites the cookie, so a sticky tab from three days ago can't leave you staring at a 502. |
-| ⚡ | **Direct LAN hops when they're available.** Machines on the same network proxy to each other directly, trying a fast link before wifi. Measured on the reference setup: **0.57 ms over a Thunderbolt bridge vs. 63 ms and unstable over wifi.** Set yours with `FIAOS_PEERS`. |
+| ⚡ | **Direct LAN hops when they're available.** Machines on the same network proxy to each other directly, trying a fast link before wifi. Measured on the reference setup: **0.57 ms over a Thunderbolt bridge vs. 63 ms and unstable over wifi.** Set yours with `FIAOS_PEERS` (read by `windows/server.py`). |
 
 The reference deployment runs a Mac mini, a MacBook Pro, and a Windows PC on one hostname. Add or drop a machine by editing one `map` block in [`deploy/nginx-fia.conf`](deploy/nginx-fia.conf).
 
@@ -179,9 +179,8 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 git clone https://github.com/nicedreamzapp/FiaOS.git
 cd FiaOS
 python3.12 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-# the server also imports these, which requirements.txt does not list yet:
-.venv/bin/pip install anthropic pillow pyobjc-framework-Quartz
+# what the macOS server imports (requirements.txt is the old voice list, see Known limits)
+.venv/bin/pip install aiohttp psutil numpy anthropic pillow pyobjc-framework-Quartz
 ```
 
 > Grant your terminal (or the LaunchAgent's Python) **Screen Recording** in System Settings > Privacy & Security, or the screen view returns an error instead of your desktop.
@@ -381,7 +380,7 @@ Sort of. Cursor mobile is a polished AI-coding UI tied to a SaaS. FiaOS is a sel
 
 ## 💚 Sponsor
 
-Solo dev. No VC. Built on a Mac in Humboldt County. If FiaOS saves you a Claude bill or just makes you smile, kick a few bucks at [github.com/sponsors/nicedreamzapp](https://github.com/sponsors/nicedreamzapp) — every dollar goes back into more local-first tools and keeping this 100% open source.
+FiaOS is free and open source. If it is useful to you, you can sponsor the work at [github.com/sponsors/nicedreamzapp](https://github.com/sponsors/nicedreamzapp).
 
 ---
 
@@ -395,6 +394,6 @@ MIT — see [LICENSE](LICENSE).
 
 Built by [**Matt Macosko**](https://github.com/nicedreamzapp) · Fia is the assistant who lives on the machines.
 
-⭐ **If you find this useful, drop a star** — or [💚 sponsor](https://github.com/sponsors/nicedreamzapp) to keep it growing.
+[💚 Sponsor](https://github.com/sponsors/nicedreamzapp)
 
 </div>
