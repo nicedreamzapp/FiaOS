@@ -314,3 +314,17 @@ async def _command_endpoint(srv, client, monkeypatch):
 
 def test_command_endpoint(srv, monkeypatch):
     _command_endpoint(srv, monkeypatch)
+
+
+@with_client
+async def _non_ascii_token_is_401_not_500(srv, client):
+    r = await client.get("/api/status", params={"token": "v1.99999999999.é"})
+    assert r.status == 401
+    r = await client.get("/", params={"token": "v1.99999999999.é"}, allow_redirects=False)
+    assert r.status == 302
+    r = await client.get("/api/authcheck", params={"token": "v1.99999999999.é"})
+    assert r.status == 401
+
+
+def test_non_ascii_token_is_401_not_500(srv):
+    _non_ascii_token_is_401_not_500(srv)

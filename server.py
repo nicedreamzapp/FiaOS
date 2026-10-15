@@ -283,7 +283,9 @@ def valid_session(token: str) -> bool:
         return False
     if time.time() > expiry:
         return False
-    return hmac.compare_digest(token, _sign(expiry))
+    # Compare bytes: compare_digest raises TypeError on a str with any
+    # non-ASCII character, which turned a junk cookie into a 500.
+    return hmac.compare_digest(token.encode("utf-8", "replace"), _sign(expiry).encode())
 
 
 def get_token(request: web.Request) -> str:

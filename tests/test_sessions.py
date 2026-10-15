@@ -221,3 +221,9 @@ def test_atomic_write_keeps_old_file_on_failure(srv, tmp_path):
     assert srv._write_json_atomic(target, {"bad": object()}) is False
     assert json.loads(target.read_text()) == {"old": True}
     assert not (tmp_path / "state.json.tmp").exists()
+
+
+@pytest.mark.parametrize("sig", ["é", "é" * 64, "\U0001f600"])
+def test_non_ascii_signature_rejected_not_raised(srv, sig):
+    """compare_digest raises TypeError on non-ASCII str; that was a 500."""
+    assert not srv.valid_session(f"v1.{int(time.time()) + 3600}.{sig}")
