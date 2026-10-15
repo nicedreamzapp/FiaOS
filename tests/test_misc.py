@@ -1,5 +1,6 @@
 """Smaller pure helpers: the terminal self-kill guard, key code tables, the
 Windows peer list, and the shell scripts in the repo."""
+import os
 import shutil
 import subprocess
 
@@ -65,7 +66,7 @@ def test_input_helper_keycodes_agree_with_server():
         assert table[browser] == srv._key_to_code(server_name), browser
 
 
-# ── Windows: FIAOS_PEERS parsing ──────────────────────────────────────────
+# ── FIAOS_PEERS parsing (both builds) ──────────────────────────────────────────
 
 @pytest.mark.parametrize("spec,expected", [
     ("", {}),
@@ -77,13 +78,36 @@ def test_input_helper_keycodes_agree_with_server():
     ("garbage;pc=;mini=x:1", {"mini": ["x:1"]}),
     ("pc=host:9000=odd", {"pc": ["host:9000=odd"]}),
 ])
-def test_parse_peers(spec, expected):
-    assert load_variant("win").server._parse_peers(spec) == expected
+def test_parse_peers(variant, spec, expected):
+    assert load_variant(variant).server._parse_peers(spec) == expected
 
 
-def test_peer_targets_never_include_self():
-    win = load_variant("win").server
-    assert win.TARGETS[win.MACHINE_KEY] == []
+def test_peer_targets_never_include_self(variant):
+    srv = load_variant(variant).server
+    assert srv.TARGETS[srv.MACHINE_KEY] == []
+
+
+def test_mac_targets_come_from_fiaos_peers():
+    """The macOS build keeps no addresses in source: the map is FIAOS_PEERS,
+    and this machine's own entry is emptied so it never proxies to itself."""
+    import json
+    import subprocess
+    import sys
+    from conftest import ROOT
+    env = dict(os.environ, FIAOS_MACHINE="mini", PYTHONPATH=str(ROOT / "tests" / "stubs"),
+               FIAOS_PEERS="mini=10.0.0.5:9000;m5=10.0.0.9:9000,10.0.0.10:9000;pc=10.0.0.12:9000")
+    code = "import json, server; print(json.dumps(server.TARGETS))"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         timeout=60, env=env, cwd=ROOT)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == {
+        "mini": [], "m5": ["10.0.0.9:9000", "10.0.0.10:9000"], "pc": ["10.0.0.12:9000"]}
+
+    env.pop("FIAOS_PEERS")
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         timeout=60, env=env, cwd=ROOT)
+    assert out.returncode == 0, out.stderr
+    assert json.loads(out.stdout.strip().splitlines()[-1]) == {"mini": []}
 
 
 # ── shell scripts at least parse ──────────────────────────────────────────

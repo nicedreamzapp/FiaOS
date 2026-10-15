@@ -12,8 +12,8 @@ Everything on this page comes from the source. FiaOS has no config file and no c
 | Variable | Used by | Default | What it does |
 |---|---|---|---|
 | `FIAOS_PASSWORD` | `server.py`, `windows/server.py` | none, **required** | The login password. Also the HMAC key that signs session tokens. If it's unset, the server exits at import time. Every machine in a fleet must use the same value. Changing it invalidates every session on every machine. |
-| `FIAOS_MACHINE` | both servers | `mini` | Which machine this copy is: `mini`, `m5` or `pc`. On Windows it decides which entry in the peer table is "this machine" (that entry is never proxied to) and what `/machines/probe/<key>` reports as local. On macOS it is read into `MACHINE` but nothing else in `server.py` uses it. |
-| `FIAOS_PEERS` | `windows/server.py` only | placeholder table (see below) | LAN addresses of the other machines, for the Windows server's built-in proxy. Format: `key=host:port[,host:port...]` entries separated by `;`. |
+| `FIAOS_MACHINE` | both servers | `mini` | Which machine this copy is: `mini`, `m5` or `pc`. On both servers it decides which entry in the peer table is "this machine" (that entry is never proxied to) and what `/machines/probe/<key>` reports as local. |
+| `FIAOS_PEERS` | both servers | Windows: placeholder table (see below). macOS: empty (no peers, every tab stays local) | LAN addresses of the other machines, for the built-in machine proxy. On macOS put it in `~/.config/fiaos/fiaos.env`. Format: `key=host:port[,host:port...]` entries separated by `;`. |
 
 Example `FIAOS_PEERS`, taken from the comment in `windows/server.py`:
 

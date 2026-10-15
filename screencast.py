@@ -37,23 +37,33 @@ def screen_points():
     return int(b.size.width), int(b.size.height)
 
 
-def geometry(full_w, full_h, want_w):
-    """Streamed size and tile grid.
+def geometry(full_w, full_h, box_w, box_h=0):
+    """The exact frame size to send for a viewer box, and its tile grid.
 
-    Must match screen_worker.py exactly: it subsamples by an integer step, which
-    is free, instead of resizing, which cost 53 ms a frame.
+    Old rule: subsample by an integer step. That could only produce half or a
+    third of the screen, so the frame almost never matched the box it was drawn
+    into, and the browser rescaled it a second time -- a 0.83x or 1.8x resample
+    of already-resampled text, which is what "fuzzy" was.
+
+    New rule: send exactly the pixels the viewer will paint, never more, never
+    upscaled. The canvas is then drawn 1:1 with the viewer's device pixels and
+    nothing is resampled twice.
     """
-    step = max(1, round(full_w / want_w))
-    w = (full_w + step - 1) // step
-    h = (full_h + step - 1) // step
+    box_w = max(1, int(box_w or full_w))
+    box_h = int(box_h) or full_h
+    scale = min(1.0, box_w / full_w, box_h / full_h)
+    w = max(TILE, round(full_w * scale))
+    h = max(1, round(full_h * scale))
     cols = (w + TILE - 1) // TILE
     rows = (h + TILE - 1) // TILE
-    return {"step": step, "w": w, "h": h, "cols": cols, "rows": rows, "tile": TILE}
+    return {"w": w, "h": h, "cols": cols, "rows": rows, "tile": TILE,
+            "scale": round(scale, 4)}
 
 
-async def start_worker(python_path, worker_path, want_w, fps, quality):
+async def start_worker(python_path, worker_path, target, fps, quality):
     return await asyncio.create_subprocess_exec(
-        python_path, "-u", worker_path, str(want_w), str(fps), str(quality),
+        python_path, "-u", worker_path, f"{target[0]}x{target[1]}",
+        str(fps), str(quality),
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.DEVNULL,
@@ -102,6 +112,7 @@ def encode_event(ev, sw, sh):
         return None
     return json.dumps(to_screen_coords(ev, sw, sh)) + "\n"
 
+
 # ── warm worker ────────────────────────────────────────────────────────────
 # A phone backgrounds the tab constantly (the UI disconnects on
 # visibilitychange), so reconnects are the common case, not the rare one. A
@@ -124,10 +135,10 @@ async def _drop_warm():
             pass
 
 
-async def acquire_worker(python_path, worker_path, want_w, fps, quality):
+async def acquire_worker(python_path, worker_path, target, fps, quality):
     """A capture worker for these settings — reused when one is still warm."""
     import time
-    key = (want_w, fps, quality)
+    key = (tuple(target), fps, quality)
     p = _WARM.get("proc")
     if p is not None and _WARM["key"] == key and p.returncode is None \
             and time.time() < _WARM["expires"]:
@@ -137,10 +148,10 @@ async def acquire_worker(python_path, worker_path, want_w, fps, quality):
             await p.stdin.drain()
         return p
     await _drop_warm()
-    return await start_worker(python_path, worker_path, want_w, fps, quality)
+    return await start_worker(python_path, worker_path, target, fps, quality)
 
 
-async def release_worker(proc, want_w, fps, quality):
+async def release_worker(proc, target, fps, quality):
     """Park a worker instead of killing it, so the next connect is instant."""
     import time
     if proc is None or proc.returncode is not None:
@@ -155,7 +166,7 @@ async def release_worker(proc, want_w, fps, quality):
             await proc.stdin.drain()
         except Exception:
             pass
-    _WARM.update({"proc": proc, "key": (want_w, fps, quality),
+    _WARM.update({"proc": proc, "key": (tuple(target), fps, quality),
                   "expires": time.time() + WARM_HOLD})
     asyncio.get_running_loop().call_later(WARM_HOLD + 1, lambda: asyncio.ensure_future(_expire()))
 

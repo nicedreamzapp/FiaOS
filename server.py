@@ -30,20 +30,23 @@ import screencast
 PORT = 9000
 FIAOS_DIR = Path(__file__).parent
 STATIC_DIR = FIAOS_DIR / "static"
+MACHINE_KEY = os.environ.get("FIAOS_MACHINE", "mini")  # mini | m5 | pc
 def _abort_no_password():
     sys.exit(
-        "FIAOS_PASSWORD env var is not set. Set one in your LaunchAgent plist "
-        "(examples/com.fiaos.server.plist) before starting FiaOS -- it is the "
-        "only thing standing between the open internet and your desktop.")
+        "FIAOS_PASSWORD is not set. It belongs in ~/.config/fiaos/fiaos.env "
+        "(chmod 600), which run.sh sources -- never in this file and never in "
+        "the LaunchAgent plist. It is the only thing between the open internet "
+        "and this desktop.")
 
 
 PASSWORD = os.environ.get("FIAOS_PASSWORD") or _abort_no_password()
+# Claude Code's binary: found on PATH, ~/.local/bin as the launchd fallback.
+CLAUDE_BIN = (shutil.which("claude") or os.path.expanduser("~/.local/bin/claude"))
 # Which machine this copy of FiaOS runs on -- the MINI/M5/PC tabs in the UI.
 # The cookie is deliberately NOT per-machine: session tokens are signed with the
 # shared password, so one login covers every machine and switching tabs never
 # asks for it again.
 MACHINE = os.environ.get("FIAOS_MACHINE", "mini")
-CLAUDE_BIN = (shutil.which("claude") or os.path.expanduser("~/.local/bin/claude"))
 SESSION_COOKIE = "fiaos_session"
 SESSION_EXPIRY = 86400  # 24 hours
 MAX_LOGIN_ATTEMPTS = 10
@@ -134,6 +137,7 @@ def _sweep_sessions() -> int:
     for k in dead:
         sessions.pop(k, None)
     return len(dead)
+
 
 
 
@@ -431,6 +435,10 @@ async def handle_claude_stream(request: web.Request):
         *cmd_args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        # stream-json puts a whole tool result on one line; a big email search
+        # runs past asyncio's 64KB default, readline() raises, and Ohm got
+        # "(no response from mini)" for an answer claude actually finished.
+        limit=64 * 1024 * 1024,
     )
     try:
         while True:
@@ -1086,17 +1094,39 @@ async def handle_screen_ws(request: web.Request):
 
     pw, ph = screencast.screen_size()      # pixels — must match the worker's grid
     sw, sh = screencast.screen_points()    # points — what mouse events are in
-    want_w = max(640, min(2560, int(request.query.get("w", 1720))))
+    # The viewer's real painting area, in device pixels. Sending exactly this
+    # many pixels is the whole trick: the canvas is then drawn 1:1 and the
+    # browser never resamples a frame that was already resampled here.
+    def _num(name, default=0.0):
+        try:
+            return float(request.query.get(name, default) or default)
+        except ValueError:
+            return default
+
+    dpr = min(max(_num("dpr", 1.0), 0.5), 3.0)
+    box_w = int(_num("vw") * dpr)
+    box_h = int(_num("vh") * dpr)
+    if box_w <= 0:                      # a client that only knows the old ?w=
+        box_w = int(_num("w")) or pw
+        box_h = ph
+    box_w = max(320, min(pw, box_w))
+    box_h = max(240, min(ph, box_h))
     fps = max(2, min(20, int(request.query.get("fps", 10))))
     quality = max(20, min(90, int(request.query.get("q", 55))))
-    geo = screencast.geometry(pw, ph, want_w)
+    geo = screencast.geometry(pw, ph, box_w, box_h)
+    target = (geo["w"], geo["h"])
+    # Who asked for what. Without this there was no way to tell a fuzzy picture
+    # on a far-end PC from a fuzzy picture in the pipe.
+    print(f"[screen] ua={request.headers.get('User-Agent','?')[:60]!r} "
+          f"box={box_w}x{box_h}@{dpr} q={quality} fps={fps} "
+          f"-> {geo['w']}x{geo['h']} scale={geo['scale']} panel={pw}x{ph}", flush=True)
 
     await ws.send_str(json.dumps({"type": "info", "screen": {"w": pw, "h": ph},
-                                  "grid": geo, "fps": fps}))
+                                  "grid": geo, "fps": fps, "dpr": dpr}))
 
     venv_python = str(FIAOS_DIR / ".venv" / "bin" / "python3")
     worker = await screencast.acquire_worker(venv_python, str(FIAOS_DIR / "screen_worker.py"),
-                                             want_w, fps, quality)
+                                             target, fps, quality)
     inp = await screencast.start_input(venv_python, str(FIAOS_DIR / "input_helper.py"))
     # The display is allowed to sleep like any Mac; -u wakes it the moment a
     # viewer connects and -d holds it on only for as long as this socket lives.
@@ -1139,7 +1169,9 @@ async def handle_screen_ws(request: web.Request):
         task.cancel()
         # The capture worker is parked, not killed: a phone backgrounding the
         # tab reconnects constantly and a cold worker costs ~166 ms every time.
-        await screencast.release_worker(worker, want_w, fps, quality)
+        # It still dies on its own after WARM_HOLD, and its parent going away
+        # stops it regardless, so nothing keeps capturing indefinitely.
+        await screencast.release_worker(worker, target, fps, quality)
         for proc in (inp, awake):
             if proc.returncode is None:
                 try:
@@ -1148,6 +1180,218 @@ async def handle_screen_ws(request: web.Request):
                 except Exception:
                     pass
     return ws
+
+
+# ═══════════════════════════════════════
+# MACHINE SWITCHING  (Mini / M5 / PC)
+# ═══════════════════════════════════════
+# The MINI/M5/PC buttons used to only set a cookie and reload — nothing on this
+# side ever read it, so picking M5 left you on the mini. Now the cookie actually
+# routes: every request and every websocket is proxied to that machine's own
+# FiaOS, which validates the same signed token, so there is no second login.
+#
+# Order matters: addresses for one machine are tried first to last, so put a
+# direct cable link (Thunderbolt bridge: ~0.6 ms, versus 4-113 ms over wifi)
+# ahead of wifi, and switching machines from a phone is as quick as staying put.
+#
+# The address map comes from FIAOS_PEERS (same format as the Windows build), e.g.
+#   FIAOS_PEERS="m5=10.0.0.9:9000,10.0.0.10:9000;pc=10.0.0.12:9000"
+# Put it in ~/.config/fiaos/fiaos.env next to FIAOS_PASSWORD. Unset, there are
+# no peers and every tab stays on this machine. This machine's own entry is
+# always emptied: "this machine" is never something to proxy to.
+def _parse_peers(spec: str) -> dict:
+    out = {}
+    for part in (spec or "").split(";"):
+        if "=" not in part:
+            continue
+        key, addrs = part.split("=", 1)
+        hosts = [a.strip() for a in addrs.split(",") if a.strip()]
+        if hosts:
+            out[key.strip()] = hosts
+    return out
+
+
+TARGETS = {k: ([] if k == MACHINE_KEY else v)
+           for k, v in _parse_peers(os.environ.get("FIAOS_PEERS", "")).items()}
+TARGETS.setdefault(MACHINE_KEY, [])
+# Never proxied: without these you could not log in, switch back, or sign out.
+LOCAL_ONLY = ("/login", "/api/login", "/logout", "/machines/", "/static/")
+_reachable: dict = {}          # "host:port" -> (ok, checked_at)
+
+
+async def _alive(hostport: str, ttl: float = 10.0) -> bool:
+    ok, when = _reachable.get(hostport, (False, 0.0))
+    if time.time() - when < ttl:
+        return ok
+    host, _, port = hostport.partition(":")
+    try:
+        r, w = await asyncio.wait_for(asyncio.open_connection(host, int(port)), timeout=1.5)
+        w.close()
+        ok = True
+    except Exception:
+        ok = False
+    _reachable[hostport] = (ok, time.time())
+    return ok
+
+
+async def pick_target(key: str):
+    """First reachable address for a machine — cable before wifi."""
+    for hostport in TARGETS.get(key, []):
+        if await _alive(hostport):
+            return hostport
+    return None
+
+
+async def handle_machine_probe(request: web.Request):
+    key = request.match_info.get("key", "")
+    if key == "mini" or key == MACHINE_KEY:
+        return web.json_response({"up": True, "via": "local"})
+    hostport = await pick_target(key)
+    if not hostport:
+        return web.json_response({"up": False}, status=503)
+    return web.json_response({"up": True, "via": hostport})
+
+
+@web.middleware
+async def same_origin_guard(request: web.Request, handler):
+    """2026-10-06 security audit: the session cookie is SameSite=None and readable by the page,
+    so a booby-trapped website could POST commands or open the terminal websocket while Matt is
+    logged in. Browsers always send Origin on those; anything changing state or upgrading to a
+    websocket must come from FiaOS's own page. Scripts and the machine proxy send no Origin."""
+    origin = request.headers.get("Origin")
+    upgrade = request.headers.get("Upgrade", "").lower() == "websocket"
+    if origin and (upgrade or request.method not in ("GET", "HEAD", "OPTIONS")):
+        from urllib.parse import urlsplit
+        if urlsplit(origin).netloc.lower() != (request.host or "").lower():
+            return web.Response(status=403, text="wrong origin")
+    return await handler(request)
+
+
+@web.middleware
+async def machine_proxy(request: web.Request, handler):
+    """Send everything to the chosen machine, websockets included."""
+    key = request.cookies.get("fia_target", MACHINE_KEY)
+    if (key == MACHINE_KEY or key not in TARGETS
+            or request.path.startswith(LOCAL_ONLY)):
+        return await handler(request)
+    hostport = await pick_target(key)
+    if not hostport:
+        return await handler(request)      # that machine is off — stay here
+
+    upgrade = request.headers.get("Upgrade", "").lower() == "websocket"
+    cookies = {k: v for k, v in request.cookies.items() if k != "fia_target"}
+
+    if upgrade:
+        client_ws = web.WebSocketResponse(max_msg_size=0, heartbeat=30)
+        await client_ws.prepare(request)
+        url = f"ws://{hostport}{request.rel_url}"
+        try:
+            async with aiohttp.ClientSession(cookies=cookies) as sess:
+                async with sess.ws_connect(url, max_msg_size=0, heartbeat=30) as up_ws:
+                    async def down():
+                        async for m in up_ws:
+                            if m.type == aiohttp.WSMsgType.BINARY:
+                                await client_ws.send_bytes(m.data)
+                            elif m.type == aiohttp.WSMsgType.TEXT:
+                                await client_ws.send_str(m.data)
+                            else:
+                                break
+                    pump = asyncio.create_task(down())
+                    try:
+                        async for m in client_ws:
+                            if m.type == aiohttp.WSMsgType.BINARY:
+                                await up_ws.send_bytes(m.data)
+                            elif m.type == aiohttp.WSMsgType.TEXT:
+                                await up_ws.send_str(m.data)
+                            else:
+                                break
+                    finally:
+                        pump.cancel()
+        except Exception as e:
+            print(f"[FiaOS] ws proxy to {key} ({hostport}) failed: {e}")
+        return client_ws
+
+    body = await request.read()
+    hop = {"host", "connection", "keep-alive", "transfer-encoding", "upgrade",
+           "proxy-authenticate", "proxy-authorization", "te", "trailers",
+           "content-length", "cookie"}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in hop}
+    try:
+        async with aiohttp.ClientSession(cookies=cookies) as sess:
+            async with sess.request(request.method, f"http://{hostport}{request.rel_url}",
+                                    headers=headers, data=body or None,
+                                    allow_redirects=False,
+                                    timeout=aiohttp.ClientTimeout(total=120)) as up:
+                raw = await up.read()
+                out = web.Response(status=up.status, body=raw)
+                for k, v in up.headers.items():
+                    if k.lower() not in hop and k.lower() != "content-encoding":
+                        out.headers[k] = v
+                return out
+    except Exception as e:
+        return web.Response(status=502, text=f"{key} unreachable via {hostport}: {e}")
+
+
+# ═══════════════════════════════════════
+# VNC BRIDGE  (the only way to reach the macOS login/lock screen)
+# ═══════════════════════════════════════
+# FiaOS's own screen view drives the Mac with synthetic CGEvents. macOS turns on
+# Secure Input at the lock screen precisely to block those, and before login this
+# agent is not running at all — so that view can never get past a password
+# prompt. Apple's own Screen Sharing runs privileged and CAN, so this bridges
+# noVNC in the browser to it: a WebSocket carrying raw RFB straight to
+# 127.0.0.1:5900. No websockify process, no extra port exposed; the bridge lives
+# behind the same FiaOS login as everything else, and 5900 stays on loopback.
+VNC_HOST, VNC_PORT = "127.0.0.1", 5900
+
+
+@require_auth
+async def handle_vnc_ws(request: web.Request):
+    ws = web.WebSocketResponse(protocols=("binary",), max_msg_size=0, heartbeat=30)
+    await ws.prepare(request)
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(VNC_HOST, VNC_PORT), timeout=8)
+    except (OSError, asyncio.TimeoutError) as e:
+        await ws.close(code=1011, message=str(e).encode()[:120])
+        return ws
+
+    async def tcp_to_ws():
+        try:
+            while True:
+                data = await reader.read(65536)
+                if not data:
+                    break
+                await ws.send_bytes(data)
+        except (ConnectionResetError, asyncio.CancelledError, RuntimeError):
+            pass
+
+    pump = asyncio.create_task(tcp_to_ws())
+    try:
+        async for msg in ws:
+            if msg.type == aiohttp.WSMsgType.BINARY:
+                writer.write(msg.data)
+                await writer.drain()
+            elif msg.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.ERROR):
+                break
+    except (ConnectionResetError, asyncio.CancelledError):
+        pass
+    finally:
+        pump.cancel()
+        writer.close()
+        try:
+            await writer.wait_closed()
+        except Exception:
+            pass
+    return ws
+
+
+@require_auth
+async def handle_vnc_page(request: web.Request):
+    """noVNC, pre-pointed at our bridge. Its own UI handles soft keyboards and
+    touch properly, which is the whole reason it is here."""
+    return web.HTTPFound("/static/novnc/vnc.html?path=api/vnc&autoconnect=1"
+                         "&resize=scale&reconnect=1&show_dot=1")
 
 
 # ═══════════════════════════════════════
@@ -1322,7 +1566,8 @@ def _sweep_strays():
 
 def create_app() -> web.Application:
     _sweep_strays()
-    app = web.Application(client_max_size=100 * 1024 * 1024)  # 100MB upload limit
+    app = web.Application(client_max_size=100 * 1024 * 1024,  # 100MB upload limit
+                          middlewares=[same_origin_guard, machine_proxy])
 
     # Auth
     app.router.add_get("/login", handle_login_page)
@@ -1374,6 +1619,10 @@ def create_app() -> web.Application:
     # WebSockets
     app.router.add_get("/api/screen", handle_screen_ws)
     app.router.add_get("/api/terminal", handle_terminal_ws)
+    app.router.add_get("/api/vnc", handle_vnc_ws)
+    app.router.add_get("/vnc", handle_vnc_page)
+    app.router.add_get("/vnc/", handle_vnc_page)
+    app.router.add_get("/machines/probe/{key}", handle_machine_probe)
 
     # Static
     app.router.add_static("/static/", path=str(STATIC_DIR), name="static")

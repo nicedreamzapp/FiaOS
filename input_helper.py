@@ -73,7 +73,8 @@ def handle(ev):
     flags = flags_for(ev.get("mods"))
 
     if t in ("move", "down", "up", "drag"):
-        mouse(t, x, y, ev.get("btn", "left"), 1, flags)
+        clicks = int(ev.get("clicks", 1)) if t in ("down", "up") else 1
+        mouse(t, x, y, ev.get("btn", "left"), max(1, min(clicks, 3)), flags)
 
     elif t == "click":
         mouse("down", x, y, ev.get("btn", "left"), 1, flags)

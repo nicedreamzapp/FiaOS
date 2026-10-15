@@ -36,5 +36,5 @@ def test_server_refuses_to_start_without_password():
     result = subprocess.run([sys.executable, "-c", "import server"], capture_output=True,
                             text=True, timeout=60, env=env, cwd=ROOT)
     assert result.returncode == 1
-    assert "FIAOS_PASSWORD env var is not set" in result.stderr
+    assert "FIAOS_PASSWORD is not set" in result.stderr
     assert "Traceback" not in result.stderr

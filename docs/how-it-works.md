@@ -89,7 +89,7 @@ Each machine runs FiaOS on local port 9000 and opens a reverse SSH tunnel to the
 
 ### 2. The Windows server's built-in proxy
 
-`windows/server.py` installs a `machine_proxy` middleware. If a request carries `fia_target=<key>` for a different machine, it proxies the whole request (WebSockets included) to the first reachable address for that key from `FIAOS_PEERS`, minus the `fia_target` cookie. `/login`, `/api/login`, `/logout`, `/machines/` and `/static/` are always served locally. If the target can't be reached, the request is served locally. The macOS server has no such middleware.
+Both servers install a `machine_proxy` middleware. If a request carries `fia_target=<key>` for a different machine, it proxies the whole request (WebSockets included) to the first reachable address for that key from `FIAOS_PEERS`, minus the `fia_target` cookie. `/login`, `/api/login`, `/logout`, `/machines/` and `/static/` are always served locally. If the target can't be reached, the request is served locally.
 
 The README reports one measured number for this path on the reference setup: 0.57 ms over a Thunderbolt bridge vs. 63 ms average (4 to 113 ms) over Wi-Fi. That is the author's measurement, not a benchmark in this repo.
 

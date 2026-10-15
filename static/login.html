@@ -57,6 +57,13 @@ button {
     transition: opacity 0.2s;
 }
 button:hover { opacity: 0.9; }
+.pw-wrap { position: relative; }
+.pw-wrap input { padding-right: 48px; }
+.pw-eye { position: absolute; right: 6px; top: 6px; width: 38px; height: 38px; padding: 0;
+    background: none; display: flex; align-items: center; justify-content: center; color: #666; }
+.pw-eye:hover { color: #e0e0e0; opacity: 1; }
+.pw-eye .slash { display: none; }
+.pw-eye.on .slash { display: inline; }
 .error { color: #ef4444; font-size: 13px; margin-top: 12px; display: none; }
 
 /* Machine tabs — pick which Mac to sign in to before typing the password. */
@@ -84,12 +91,26 @@ button:hover { opacity: 0.9; }
     <p class="subtitle">Remote Mac Control Center</p>
     <div class="machines" id="machines"></div>
     <form id="loginForm">
-        <input type="password" id="password" placeholder="Password" autofocus>
+        <div class="pw-wrap">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password" autofocus>
+            <button type="button" class="pw-eye" id="pwEye" aria-label="Show password" title="Show password">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/><line class="slash" x1="3" y1="3" x2="21" y2="21"/></svg>
+            </button>
+        </div>
         <button type="submit">Sign In</button>
     </form>
     <p class="error" id="error"></p>
 </div>
 <script>
+document.getElementById('pwEye').addEventListener('click', () => {
+    const pw = document.getElementById('password'), eye = document.getElementById('pwEye');
+    const show = pw.type === 'password';
+    pw.type = show ? 'text' : 'password';
+    eye.classList.toggle('on', show);
+    eye.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    eye.title = eye.getAttribute('aria-label');
+    pw.focus();
+});
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const pw = document.getElementById('password').value;
