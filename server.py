@@ -1190,16 +1190,30 @@ async def handle_screen_ws(request: web.Request):
 # routes: every request and every websocket is proxied to that machine's own
 # FiaOS, which validates the same signed token, so there is no second login.
 #
-# Order matters. The M5 is wired to the mini by a Thunderbolt cable, which shows
-# up as bridge0 here (192.168.3.1) and 192.168.3.2 there. Measured: 0.57 ms over
-# the cable versus 63 ms average and wildly unstable (4-113 ms) over wifi. The
-# cable is tried first and wifi is only the fallback, so switching to the M5 from
-# a phone is as quick as the mini itself.
-TARGETS = {
-    "mini": [],                                         # this machine
-    "m5":   ["192.168.3.2:9000", "192.168.1.216:9000"],  # Thunderbolt, then wifi
-    "pc":   ["192.168.1.236:9000"],                      # Windows shop PC (LAN only; no cable)
-}
+# Order matters: addresses for one machine are tried first to last, so put a
+# direct cable link (Thunderbolt bridge: ~0.6 ms, versus 4-113 ms over wifi)
+# ahead of wifi, and switching machines from a phone is as quick as staying put.
+#
+# The address map comes from FIAOS_PEERS (same format as the Windows build), e.g.
+#   FIAOS_PEERS="m5=10.0.0.9:9000,10.0.0.10:9000;pc=10.0.0.12:9000"
+# Put it in ~/.config/fiaos/fiaos.env next to FIAOS_PASSWORD. Unset, there are
+# no peers and every tab stays on this machine. This machine's own entry is
+# always emptied: "this machine" is never something to proxy to.
+def _parse_peers(spec: str) -> dict:
+    out = {}
+    for part in (spec or "").split(";"):
+        if "=" not in part:
+            continue
+        key, addrs = part.split("=", 1)
+        hosts = [a.strip() for a in addrs.split(",") if a.strip()]
+        if hosts:
+            out[key.strip()] = hosts
+    return out
+
+
+TARGETS = {k: ([] if k == MACHINE_KEY else v)
+           for k, v in _parse_peers(os.environ.get("FIAOS_PEERS", "")).items()}
+TARGETS.setdefault(MACHINE_KEY, [])
 # Never proxied: without these you could not log in, switch back, or sign out.
 LOCAL_ONLY = ("/login", "/api/login", "/logout", "/machines/", "/static/")
 _reachable: dict = {}          # "host:port" -> (ok, checked_at)

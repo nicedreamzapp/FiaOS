@@ -19,6 +19,19 @@ def sc(variant):
 
 
 # ── geometry ──────────────────────────────────────────────────────────────
+# The two builds no longer share a geometry rule. Windows still subsamples by an
+# integer step. macOS now sizes the stream to the viewer's exact pixel box and
+# the worker resizes once to that size, so the picture is never resampled twice.
+
+@pytest.fixture
+def win_sc():
+    return load_variant("win").screencast
+
+
+@pytest.fixture
+def mac_sc():
+    return load_variant("mac").screencast
+
 
 @pytest.mark.parametrize("full,want,expected", [
     ((1920, 1080), 1720, {"step": 1, "w": 1920, "h": 1080, "cols": 15, "rows": 9}),
@@ -27,8 +40,8 @@ def sc(variant):
     ((800, 600), 1720, {"step": 1, "w": 800, "h": 600, "cols": 7, "rows": 5}),
     ((3441, 1441), 1720, {"step": 2, "w": 1721, "h": 721, "cols": 14, "rows": 6}),
 ])
-def test_geometry(sc, full, want, expected):
-    geo = sc.geometry(*full, want)
+def test_win_geometry(win_sc, full, want, expected):
+    geo = win_sc.geometry(*full, want)
     assert geo == {**expected, "tile": 128}
 
 
@@ -36,31 +49,106 @@ def test_geometry(sc, full, want, expected):
     (1920, 1080, 1720), (3456, 2234, 1720), (5120, 2880, 640),
     (2560, 1600, 2560), (1366, 768, 900), (7, 5, 1720),
 ])
-def test_geometry_matches_numpy_subsample(sc, full_w, full_h, want):
-    """The server's promised grid must equal what the worker's frame[::step]
-    actually produces, or tiles land in the wrong slots."""
+def test_win_geometry_matches_numpy_subsample(win_sc, full_w, full_h, want):
+    """The server's promised grid must equal what the Windows worker's
+    frame[::step] actually produces, or tiles land in the wrong slots."""
     np = pytest.importorskip("numpy")
-    geo = sc.geometry(full_w, full_h, want)
+    geo = win_sc.geometry(full_w, full_h, want)
     frame = np.zeros((full_h, full_w, 3), dtype=np.uint8)
     small = frame[::geo["step"], ::geo["step"]]
     assert small.shape[:2] == (geo["h"], geo["w"])
 
 
-@pytest.mark.parametrize("path", [MAC_DIR / "screen_worker.py", WIN_DIR / "screen_worker.py"],
-                         ids=["mac", "win"])
-def test_worker_uses_same_tile_and_step(path):
+@pytest.mark.parametrize("full,box,expected", [
+    # box at least as big as the panel: full size, never upscaled
+    ((1920, 1080), (1920, 1080), {"w": 1920, "h": 1080, "cols": 15, "rows": 9, "scale": 1.0}),
+    ((1920, 1080), (3840, 2160), {"w": 1920, "h": 1080, "cols": 15, "rows": 9, "scale": 1.0}),
+    # width-limited
+    ((3440, 1440), (1720, 1440), {"w": 1720, "h": 720, "cols": 14, "rows": 6, "scale": 0.5}),
+    # height-limited
+    ((2000, 1000), (2000, 500), {"w": 1000, "h": 500, "cols": 8, "rows": 4, "scale": 0.5}),
+    # box_h omitted (an old ?w= client): width alone decides
+    ((3440, 1440), (1720, 0), {"w": 1720, "h": 720, "cols": 14, "rows": 6, "scale": 0.5}),
+])
+def test_mac_geometry(mac_sc, full, box, expected):
+    assert mac_sc.geometry(*full, *box) == {**expected, "tile": 128}
+
+
+@pytest.mark.parametrize("full_w,full_h,box_w,box_h", [
+    (1920, 1080, 1720, 1000), (3456, 2234, 1720, 1112), (5120, 2880, 640, 480),
+    (2560, 1600, 2560, 1600), (1366, 768, 900, 2000), (3440, 1440, 2388, 1000),
+    (3440, 1440, 1419, 594),
+])
+def test_mac_geometry_fits_box_and_keeps_aspect(mac_sc, full_w, full_h, box_w, box_h):
+    geo = mac_sc.geometry(full_w, full_h, box_w, box_h)
+    assert geo["scale"] <= 1.0
+    assert geo["w"] <= max(box_w, 128) and geo["h"] <= box_h
+    assert geo["w"] <= full_w and geo["h"] <= full_h
+    assert abs(geo["w"] / geo["h"] - full_w / full_h) < 0.01
+    assert geo["cols"] == -(-geo["w"] // 128) and geo["rows"] == -(-geo["h"] // 128)
+
+
+def _load_mac_worker():
+    """screen_worker.py imports Quartz at the top. fit() is pure numpy/PIL, so
+    load it with a stand-in Quartz module wherever the real one is missing."""
+    import importlib.util
+    import sys
+    import types
+    stub = None
+    if "Quartz" not in sys.modules:
+        try:
+            import Quartz  # noqa: F401
+        except ImportError:
+            stub = sys.modules["Quartz"] = types.ModuleType("Quartz")
+    try:
+        spec = importlib.util.spec_from_file_location("mac_screen_worker_fit",
+                                                      MAC_DIR / "screen_worker.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        if stub is not None:
+            sys.modules.pop("Quartz", None)
+    return mod
+
+
+@pytest.mark.parametrize("full_w,full_h,box_w,box_h", [
+    (1920, 1080, 1720, 1000), (3456, 2234, 1720, 1112), (2560, 1600, 2560, 1600),
+    (1366, 768, 900, 2000), (3440, 1440, 1419, 594),
+])
+def test_mac_worker_fit_produces_promised_grid(mac_sc, full_w, full_h, box_w, box_h):
+    """What the server promises the browser must be exactly what the worker's
+    fit() produces, or tiles land in the wrong slots."""
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    worker = _load_mac_worker()
+    geo = mac_sc.geometry(full_w, full_h, box_w, box_h)
+    frame = np.zeros((full_h, full_w, 3), dtype=np.uint8)
+    small = worker.fit(frame, geo["w"], geo["h"])
+    assert small.shape == (geo["h"], geo["w"], 3)
+
+
+def test_mac_worker_fit_is_identity_at_full_size():
+    np = pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    worker = _load_mac_worker()
+    frame = np.arange(40 * 30 * 3, dtype=np.uint8).reshape(30, 40, 3)
+    assert np.array_equal(worker.fit(frame, 40, 30), frame)
+
+
+def test_win_worker_uses_same_tile_and_step():
     """screen_worker.py can't be imported off its platform, so check its source
     agrees with screencast.geometry on the two numbers that must match."""
-    src = path.read_text()
+    src = (WIN_DIR / "screen_worker.py").read_text()
     assert re.search(r"^TILE = 128$", src, re.M)
     assert "max(1, round(full_w / want_w))" in src
 
 
-def test_mac_and_windows_geometry_agree():
-    mac = load_variant("mac").screencast
-    win = load_variant("win").screencast
-    for dims in [(1920, 1080, 1720), (3456, 2234, 1720), (2560, 1440, 1280)]:
-        assert mac.geometry(*dims) == win.geometry(*dims)
+def test_mac_worker_uses_same_tile_and_takes_exact_target():
+    src = (MAC_DIR / "screen_worker.py").read_text()
+    assert re.search(r"^TILE = 128$", src, re.M)
+    assert load_variant("mac").screencast.TILE == 128
+    assert "fit(frame, tw, th)" in src
+    assert 'target.lower().split("x")' in src
 
 
 # ── tile records ──────────────────────────────────────────────────────────
@@ -169,7 +257,7 @@ class FakeProc:
 def warm(sc, monkeypatch):
     started = []
 
-    async def fake_start(python_path, worker_path, want_w, fps, quality):
+    async def fake_start(python_path, worker_path, size, fps, quality):
         p = FakeProc()
         started.append(p)
         return p
@@ -179,12 +267,22 @@ def warm(sc, monkeypatch):
     sc._WARM.update({"proc": None, "key": None, "expires": 0.0})
 
 
-def test_warm_worker_is_reused(sc, warm):
+# The worker is keyed by its size: an integer width on Windows, an exact
+# (w, h) target on macOS.
+SIZES = {"mac": ((1720, 720), (1280, 536)), "win": (1720, 1280)}
+
+
+@pytest.fixture
+def sizes(variant):
+    return SIZES[variant]
+
+
+def test_warm_worker_is_reused(sc, warm, sizes):
     async def go():
-        a = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
-        await sc.release_worker(a, 1720, 10, 55)
+        a = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
+        await sc.release_worker(a, sizes[0], 10, 55)
         assert a.stdin.written == b"P\n"                 # parked = paused
-        b = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
+        b = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
         return a, b
     a, b = run(go())
     assert a is b
@@ -192,11 +290,11 @@ def test_warm_worker_is_reused(sc, warm):
     assert a.stdin.written == b"P\nR\n"                  # resend every tile
 
 
-def test_warm_worker_not_reused_for_other_settings(sc, warm):
+def test_warm_worker_not_reused_for_other_settings(sc, warm, sizes):
     async def go():
-        a = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
-        await sc.release_worker(a, 1720, 10, 55)
-        b = await sc.acquire_worker("py", "w.py", 1280, 10, 55)
+        a = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
+        await sc.release_worker(a, sizes[0], 10, 55)
+        b = await sc.acquire_worker("py", "w.py", sizes[1], 10, 55)
         return a, b
     a, b = run(go())
     assert a is not b
@@ -204,23 +302,23 @@ def test_warm_worker_not_reused_for_other_settings(sc, warm):
     assert len(warm) == 2
 
 
-def test_expired_warm_worker_not_reused(sc, warm):
+def test_expired_warm_worker_not_reused(sc, warm, sizes):
     async def go():
-        a = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
-        await sc.release_worker(a, 1720, 10, 55)
+        a = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
+        await sc.release_worker(a, sizes[0], 10, 55)
         sc._WARM["expires"] = 0.0
-        b = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
+        b = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
         return a, b
     a, b = run(go())
     assert a is not b and a.returncode == -9
 
 
-def test_dead_worker_is_not_parked(sc, warm):
+def test_dead_worker_is_not_parked(sc, warm, sizes):
     async def go():
-        a = await sc.acquire_worker("py", "w.py", 1720, 10, 55)
+        a = await sc.acquire_worker("py", "w.py", sizes[0], 10, 55)
         a.returncode = 1
-        await sc.release_worker(a, 1720, 10, 55)
-        await sc.release_worker(None, 1720, 10, 55)
+        await sc.release_worker(a, sizes[0], 10, 55)
+        await sc.release_worker(None, sizes[0], 10, 55)
     run(go())
     assert sc._WARM["proc"] is None
 
