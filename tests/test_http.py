@@ -332,7 +332,7 @@ def test_non_ascii_token_is_401_not_500(srv):
 
 @with_client
 async def _sibling_of_home_is_outside_home(srv, client, home):
-    """/home/matt-evil starts with the string /home/matt but is not inside it."""
+    """/home/alice-evil starts with the string /home/alice but is not inside it."""
     await login(client)
     sib = home.parent / (home.name + "-evil")
     sib.mkdir()

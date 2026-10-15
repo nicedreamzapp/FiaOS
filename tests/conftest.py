@@ -103,7 +103,7 @@ def srv(variant, tmp_path, monkeypatch):
 @pytest.fixture
 def home(tmp_path, monkeypatch):
     """A fake home directory, so the file API has somewhere safe to work."""
-    h = tmp_path / "home" / "matt"
+    h = tmp_path / "home" / "alice"
     (h / "Desktop").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(h))
     monkeypatch.setenv("USERPROFILE", str(h))

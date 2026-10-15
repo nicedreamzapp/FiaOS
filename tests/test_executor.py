@@ -80,7 +80,7 @@ def test_mac_only_blocks(mac_ex, cmd):
 
 @pytest.mark.parametrize("cmd", [
     "format C:",
-    r"Remove-Item C:\Users\matt -Recurse -Force",
+    r"Remove-Item C:\Users\alice -Recurse -Force",
     "Remove-Item $env:USERPROFILE -Recurse",
     "rd /s /q C:\\Users",
     "rmdir /s C:\\",

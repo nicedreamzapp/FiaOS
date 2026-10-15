@@ -489,7 +489,7 @@ def _in_home(real_path: str, home: str) -> bool:
     """True if real_path is home or somewhere under it.
 
     A bare startswith(home) also let through siblings that merely share the
-    prefix: with home /Users/matt, /Users/matt2 and /Users/matt-backup passed.
+    prefix: with home /Users/alice, /Users/alice2 and /Users/alice-backup passed.
     """
     home = home.rstrip(os.sep)
     return real_path == home or real_path.startswith(home + os.sep)
