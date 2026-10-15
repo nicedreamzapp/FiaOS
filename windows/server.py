@@ -485,13 +485,23 @@ async def handle_command(request: web.Request):
 # FILE BROWSER + UPLOAD/DOWNLOAD
 # ═══════════════════════════════════════
 
+def _in_home(real_path: str, home: str) -> bool:
+    """True if real_path is home or somewhere under it.
+
+    A bare startswith(home) also let through siblings that merely share the
+    prefix: with home /Users/matt, /Users/matt2 and /Users/matt-backup passed.
+    """
+    home = home.rstrip(os.sep)
+    return real_path == home or real_path.startswith(home + os.sep)
+
+
 @require_auth
 async def handle_files(request: web.Request):
     path = request.query.get("path", os.path.expanduser("~/Desktop"))
     path = os.path.expanduser(path)  # handle ~ in paths
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home):
+    if not _in_home(real_path, home):
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.exists(real_path):
         return web.json_response({"error": "Path not found"}, status=404)
@@ -532,7 +542,7 @@ async def handle_file_download(request: web.Request):
     path = request.query.get("path", "")
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home):
+    if not _in_home(real_path, home):
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.isfile(real_path):
         return web.json_response({"error": "Not a file"}, status=404)
@@ -555,7 +565,7 @@ async def handle_file_upload(request: web.Request):
             file_field = field
             filename = field.filename
             real_dest = os.path.realpath(dest_dir)
-            if not real_dest.startswith(home):
+            if not _in_home(real_dest, home):
                 return web.json_response({"error": "Access denied"}, status=403)
             os.makedirs(real_dest, exist_ok=True)
             filepath = os.path.join(real_dest, filename)
@@ -576,7 +586,7 @@ async def handle_file_delete(request: web.Request):
     path = data.get("path", "")
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home) or real_path == home:
+    if not _in_home(real_path, home) or real_path == home:
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.exists(real_path):
         return web.json_response({"error": "Not found"}, status=404)
@@ -594,7 +604,7 @@ async def handle_file_move(request: web.Request):
     src = data.get("src", "")
     dst = data.get("dst", "")
     home = os.path.expanduser("~")
-    if not os.path.realpath(src).startswith(home) or not os.path.realpath(dst).startswith(home):
+    if not _in_home(os.path.realpath(src), home) or not _in_home(os.path.realpath(dst), home):
         return web.json_response({"error": "Access denied"}, status=403)
     shutil.move(src, dst)
     return web.json_response({"ok": True})

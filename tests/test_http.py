@@ -328,3 +328,38 @@ async def _non_ascii_token_is_401_not_500(srv, client):
 
 def test_non_ascii_token_is_401_not_500(srv):
     _non_ascii_token_is_401_not_500(srv)
+
+
+@with_client
+async def _sibling_of_home_is_outside_home(srv, client, home):
+    """/home/matt-evil starts with the string /home/matt but is not inside it."""
+    await login(client)
+    sib = home.parent / (home.name + "-evil")
+    sib.mkdir()
+    (sib / "secret.txt").write_text("s")
+    (home / "Desktop" / "mine.txt").write_text("m")
+
+    r = await client.get("/api/files", params={"path": str(sib)})
+    assert r.status == 403
+    r = await client.get("/api/files/download", params={"path": str(sib / "secret.txt")})
+    assert r.status == 403
+
+    form = FormData()
+    form.add_field("dest", str(sib))
+    form.add_field("file", b"x", filename="dropped.txt")
+    r = await client.post("/api/files/upload", data=form)
+    assert r.status == 403
+    assert not (sib / "dropped.txt").exists()
+
+    r = await client.post("/api/files/delete", json={"path": str(sib / "secret.txt")})
+    assert r.status == 403
+    assert (sib / "secret.txt").exists()
+
+    r = await client.post("/api/files/move", json={
+        "src": str(home / "Desktop" / "mine.txt"), "dst": str(sib / "mine.txt")})
+    assert r.status == 403
+    assert (home / "Desktop" / "mine.txt").exists()
+
+
+def test_sibling_of_home_is_outside_home(srv, home):
+    _sibling_of_home_is_outside_home(srv, home)
