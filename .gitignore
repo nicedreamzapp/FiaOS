@@ -39,3 +39,7 @@ static/*.png
 static/*.jpg
 static/*.bak-*
 .revoked.json
+
+# MkDocs build output
+site/
+.cache/
