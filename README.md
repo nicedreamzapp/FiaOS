@@ -8,6 +8,7 @@
 
 > 💡 **Looking for the iMessage version?** See [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone) — same idea, async text-driven workflow. **FiaOS is the live one** — open a web page, you *are* on the machine.
 
+[![CI](https://img.shields.io/github/actions/workflow/status/nicedreamzapp/FiaOS/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/nicedreamzapp/FiaOS/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6366f1.svg?style=for-the-badge)](LICENSE)
 [![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon-7c3aed?style=for-the-badge&logo=apple)](https://www.apple.com/mac/)
 [![Windows](https://img.shields.io/badge/Windows-10%20%2F%2011-0078d4?style=for-the-badge&logo=windows&logoColor=white)](windows/)
@@ -29,7 +30,7 @@
 
 **FiaOS is a small Python web server you run on each of your computers; it gives you that machine's live screen and a real terminal in any browser, behind one password.**
 
-**Proof it works:** real screenshots from the running app are [below](#-in-action), and the repo ships its own tests. [`tests/test_auth.py`](tests/test_auth.py) runs 62 auth and session checks against the real `server.py` (62 passed, 0 failed on a clean run), and [`tests/test_infra.sh`](tests/test_infra.sh) breaks a live deployment on purpose in 15 failure scenarios and measures recovery. See [`tests/README.md`](tests/README.md).
+**Proof it works:** real screenshots from the running app are [below](#-in-action), and the repo ships its own tests. [`tests/test_auth.py`](tests/test_auth.py) runs 62 auth and session checks against the real `server.py` (62 passed, 0 failed on a clean run), and [`tests/test_infra.sh`](tests/test_infra.sh) breaks a live deployment on purpose in 15 failure scenarios and measures recovery. A pytest suite on top of that runs on every push in [CI](.github/workflows/ci.yml), on plain Linux with no Mac, GPU or network. See [`tests/README.md`](tests/README.md).
 
 A single page that turns your computer into a **fully remote-controlled headless dev box** — reachable from any device with a browser. Phone. Laptop. Friend's PC. Doesn't matter.
 
@@ -262,7 +263,7 @@ What does not work yet, or needs manual steps:
 - **`start.sh`, `watchdog.sh` and `start_personaplex.sh` still reference the removed voice agent.** They try to launch `personaplex_mlx`, which isn't in this repo. Use `launch_server.sh` or the LaunchAgent to run FiaOS itself.
 - **The Windows noVNC tab isn't turnkey.** The `/vnc` route redirects to `/static/novnc/`, which isn't bundled, and the bridge expects a VNC server on `127.0.0.1:5900`.
 - **The shipped nginx config has the PC's dead-machine fallback turned off** (`$fia_fallback_ok` is `0` for `pc`). Flip it to `1` once your PC is serving.
-- **`tests/test_infra.sh` needs a real deployment** (`FIA_VPS`, `FIA_URL`, and the reference setup's LaunchAgents). `tests/test_auth.py` runs anywhere.
+- **`tests/test_infra.sh` needs a real deployment** (`FIA_VPS`, `FIA_URL`, and the reference setup's LaunchAgents). `tests/test_auth.py` and the pytest suite run anywhere.
 - **Windows volume** is media keys only, as noted above.
 
 ---
@@ -298,6 +299,7 @@ deploy/
   sshd-tunnel-keepalive.conf      ─ VPS sshd setting that reaps dead tunnels in ~90s
 
 tests/
+  test_*.py             ─ pytest suite, both servers, runs on Linux (python -m pytest)
   test_auth.py          ─ 62 auth/session checks against the real server.py
   test_infra.sh         ─ 15 live failure scenarios (needs a real deployment)
   regress_logout.py     ─ does a logged-out token still work?
