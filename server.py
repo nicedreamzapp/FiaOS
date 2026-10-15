@@ -545,7 +545,11 @@ async def handle_file_upload(request: web.Request):
             dest_dir = (await field.text()).strip() or dest_dir
         elif field.name == "file":
             file_field = field
-            filename = field.filename
+            # A name, never a path: "../../x" or "/abs/x" from the client used
+            # to be joined onto real_dest as-is and land outside it.
+            filename = os.path.basename(field.filename or "")
+            if filename in ("", ".", ".."):
+                return web.json_response({"error": "Bad filename"}, status=400)
             real_dest = os.path.realpath(dest_dir)
             if not _in_home(real_dest, home):
                 return web.json_response({"error": "Access denied"}, status=403)

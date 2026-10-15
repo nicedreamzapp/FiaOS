@@ -363,3 +363,41 @@ async def _sibling_of_home_is_outside_home(srv, client, home):
 
 def test_sibling_of_home_is_outside_home(srv, home):
     _sibling_of_home_is_outside_home(srv, home)
+
+
+def _raw_upload(filename: str) -> bytes:
+    # Built by hand: aiohttp's own client percent-encodes the filename, a
+    # browser or curl does not.
+    return (b'--B\r\nContent-Disposition: form-data; name="file"; filename="'
+            + filename.encode() + b'"\r\n\r\npayload\r\n--B--\r\n')
+
+
+@pytest.mark.parametrize("filename", ["../../escaped.txt", "../escaped.txt", "{root}/escaped.txt"],
+                         ids=["dotdot2", "dotdot1", "absolute"])
+def test_upload_filename_cannot_escape_dest(srv, home, tmp_path, filename):
+    filename = filename.format(root=tmp_path)
+
+    @with_client
+    async def go(srv, client):
+        await login(client)
+        r = await client.post("/api/files/upload", data=_raw_upload(filename),
+                              headers={"Content-Type": "multipart/form-data; boundary=B"})
+        assert r.status == 200
+        saved = (await r.json())["path"]
+        assert os.path.dirname(saved) == str(home / "Desktop")
+        assert (home / "Desktop" / "escaped.txt").read_bytes() == b"payload"
+    go(srv)
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (home.parent / "escaped.txt").exists()
+    assert not (home / "escaped.txt").exists()
+
+
+@pytest.mark.parametrize("filename", ["", "..", "a/.."], ids=["empty", "dotdot", "trailing-dotdot"])
+def test_upload_rejects_nameless_file(srv, home, filename):
+    @with_client
+    async def go(srv, client):
+        await login(client)
+        r = await client.post("/api/files/upload", data=_raw_upload(filename),
+                              headers={"Content-Type": "multipart/form-data; boundary=B"})
+        assert r.status == 400
+    go(srv)
