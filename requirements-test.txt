@@ -1,0 +1,7 @@
+# What the test suite needs, and nothing else: no MLX, no Quartz, no GPU.
+# Matches the versions the server pins (aiohttp <3.11, psutil 6.0, numpy 2.1).
+aiohttp==3.10.11
+psutil==6.0.0
+numpy==2.1.0
+pytest==8.3.5
+flake8==7.1.1
