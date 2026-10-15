@@ -13,7 +13,7 @@ Record format on stdout, repeated:
 stdin accepts single characters:
     R   forget what the far end has, so the next pass resends every tile
 
-Usage: screen_worker.py <streamed_width> <fps> <jpeg_quality>
+Usage: screen_worker.py <target_w>x<target_h> <fps> <jpeg_quality>
 """
 import hashlib
 import io
@@ -42,8 +42,27 @@ def grab():
     return arr[:, :w, :3][:, :, ::-1]      # BGRA -> RGB
 
 
+def fit(frame, tw, th):
+    """Resize a grab to exactly the size the viewer will paint.
+
+    frame[::2, ::2] was free but it is point sampling, and it could only ever
+    produce half or a third of the screen -- so the browser rescaled the result
+    a second time to fill its box. Two resamples of antialiased text is what
+    read as fuzzy. Resizing once, here, to the viewer's exact pixel box means
+    the canvas is drawn 1:1 and nothing is resampled again.
+
+    LANCZOS costs ~24 ms on a 2560x1440 grab and keeps edges crisp; below half
+    size BOX is both faster and the right filter (plain area average).
+    """
+    h, w, _ = frame.shape
+    if (tw, th) == (w, h):
+        return np.ascontiguousarray(frame)
+    flt = Image.LANCZOS if tw * 2 > w else Image.BOX
+    return np.asarray(Image.fromarray(frame).resize((tw, th), flt))
+
+
 def main():
-    want_w = int(sys.argv[1]) if len(sys.argv) > 1 else 1720
+    target = sys.argv[1] if len(sys.argv) > 1 else "0x0"
     fps = float(sys.argv[2]) if len(sys.argv) > 2 else 10
     quality = int(sys.argv[3]) if len(sys.argv) > 3 else 55
 
@@ -51,8 +70,14 @@ def main():
     if first is None:
         sys.exit("no screen")
     full_h, full_w, _ = first.shape
-    # Integer subsampling only: it costs nothing, where a real resize cost 53 ms.
-    step = max(1, round(full_w / want_w))
+    # The server already worked out the exact frame size for this viewer; never
+    # second-guess it, and never send more than the panel really has.
+    tw, th = (int(v) for v in target.lower().split("x"))
+    tw = min(full_w, tw) if tw > 0 else full_w
+    th = min(full_h, th) if th > 0 else full_h
+    # 4:4:4 above q70: chroma subsampling is what smears colored text, and the
+    # extra bytes only ride on tiles that actually changed.
+    sub = 0 if quality >= 70 else 2
     out = sys.stdout.buffer
     hashes: dict[int, bytes] = {}
     interval = 1.0 / fps
@@ -97,7 +122,7 @@ def main():
         if frame is None:
             time.sleep(interval)
             continue
-        small = np.ascontiguousarray(frame[::step, ::step])
+        small = fit(frame, tw, th)
         h, w, _ = small.shape
         cols = (w + TILE - 1) // TILE
 
@@ -110,7 +135,8 @@ def main():
                     continue
                 hashes[index] = digest
                 buf = io.BytesIO()
-                Image.fromarray(tile).save(buf, "JPEG", quality=quality, optimize=False)
+                Image.fromarray(tile).save(buf, "JPEG", quality=quality,
+                                           subsampling=sub, optimize=False)
                 jpeg = buf.getvalue()
                 out.write(index.to_bytes(2, "big") + len(jpeg).to_bytes(4, "big") + jpeg)
         out.flush()

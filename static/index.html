@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<!-- Pinch to zoom stays ON. The screen canvas blocks the browser's own gesture
+     (a finger there is a remote mouse) and does its own zoom instead, but every
+     other tab — terminal, files, logs — is just a page and should enlarge. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
 <title>FiaOS</title>
 <link rel="stylesheet" href="/static/vendor/xterm.min.css">
 <script src="/static/vendor/xterm.min.js"></script>
@@ -75,8 +78,13 @@ body.fullscreen .topbar, body.fullscreen .tabs { display: none; }
 .panel.active { display: flex; }
 
 /* SCREEN */
-.screen-wrap { flex: 1; display: flex; overflow: hidden; background: #000; outline: none; position: relative; }
-#screenCanvas { width: 100%; height: 100%; object-fit: contain; cursor: crosshair; -webkit-user-select: none; user-select: none; touch-action: none; }
+.screen-wrap { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; outline: none; position: relative; }
+/* No width:100%. The frame arrives at exactly the size this box can paint,
+   so it is drawn 1:1 with the viewer's device pixels and the browser resamples
+   nothing. Stretching it here is what made a remote screen fuzzy. */
+/* No max-width/height: once zoomed, the frame is deliberately bigger than
+   the window and the cap would squash it right back down. */
+#screenCanvas { display: block; margin: auto; will-change: transform; cursor: crosshair; -webkit-user-select: none; user-select: none; touch-action: none; transform-origin: center center; }
 /* Real, focusable and off-screen — a phone raises its keyboard only for an
    actual focused text field, which is why focusing the wrapper div never
    worked. Never display:none or visibility:hidden: iOS refuses to focus a
@@ -102,6 +110,10 @@ body.touch .touch-bar { display: flex; }
 #xterm-container { flex: 1; padding: 6px 8px; background: #000; overflow: hidden; }
 #xterm-container .xterm { height: 100%; }
 #xterm-container .xterm-viewport { background-color: transparent !important; }
+/* iOS zooms the whole page when you focus a field smaller than 16px, and the
+   terminal's hidden input is terminal-sized. It is invisible, so the size costs
+   nothing and stops the page jumping every time the keyboard comes up. */
+#xterm-container .xterm-helper-textarea { font-size: 16px !important; }
 
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -137,6 +149,7 @@ body.touch .touch-bar { display: flex; }
                    aria-label="Send keystrokes to the Mac">
             <div class="touch-bar" id="touchBar">
                 <button id="kbBtn" title="Keyboard">&#9000;</button>
+                <button id="zoomBtn" title="Reset zoom" hidden>1.0&#215;</button>
                 <button data-mod="cmd">&#8984;</button>
                 <button data-key="Tab">tab</button>
                 <button data-key="Escape">esc</button>
@@ -203,9 +216,45 @@ const canvas = document.getElementById('screenCanvas');
 const cctx = canvas.getContext('2d', {alpha: false});
 const screenMsg = document.getElementById('screenMsg');
 let grid = null, screenWs = null, dragging = false, lastMove = 0, retry = null;
+let lastBox = '', resizeTimer = null;
+let screenInfo = null, reqZoom = 1, lastWrap = '', refitTimer = null;
+
+// The box to ask the far machine for: the window, times the magnification.
+// The server clamps this to the panel's real pixels, so asking for 6x simply
+// gets every pixel that machine actually has.
+function reqBox() {
+    const z = Math.max(1, Math.min(MAXZOOM, zoom));
+    return {vw: Math.round(screenWrap.clientWidth * z),
+            vh: Math.round(screenWrap.clientHeight * z)};
+}
+// Once the fingers settle, go and fetch the real pixels. Debounced hard: each
+// refit retargets the capture worker, so doing it mid-pinch would stutter.
+function scheduleRefit() {
+    clearTimeout(refitTimer);
+    refitTimer = setTimeout(() => {
+        if (Math.abs(zoom - reqZoom) < 0.05) return;
+        screenDisconnect();
+        screenConnect();
+    }, 400);
+}
+
+// A resized window needs a differently sized frame, or the canvas goes back to
+// being scaled. Debounced, and only when the box really changed.
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+        if (!document.getElementById('tab-screen').classList.contains('active')) return;
+        const b = reqBox();
+        const box = b.vw + 'x' + b.vh;
+        if (box === lastBox) return;
+        screenDisconnect();
+        screenConnect();
+    }, 500);
+});
 
 // Declared up here because screenConnect() tunes the stream for the viewer.
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+if (isTouch) document.documentElement.classList.add('touch-root');
 
 function screenConnect() {
     if (screenWs && (screenWs.readyState === 0 || screenWs.readyState === 1)) return;
@@ -216,11 +265,20 @@ function screenConnect() {
     // hold back. `lan` is true when the page itself was opened over the local
     // address, which is the fast path worth bookmarking at home.
     const lan = /^(10\.|192\.168\.|127\.|localhost|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const want = Math.round(Math.min(2560, Math.max(720, screenWrap.clientWidth * dpr)));
-    const p = lan ? {w: Math.max(want, 1920), fps: 15, q: 80}
-                  : {w: want, fps: isTouch ? 12 : 10, q: isTouch ? 58 : 72};
-    screenWs = new WebSocket(`${proto}//${location.host}/api/screen?w=${p.w}&fps=${p.fps}&q=${p.q}`);
+    // Ask for the box, not a width. The server sends exactly this many device
+    // pixels (never more than the far screen really has) and the canvas paints
+    // them 1:1, so nothing is scaled twice. Quality can go up because the frame
+    // is no longer bigger than the window needs.
+    const dpr = window.devicePixelRatio || 1;
+    const {vw, vh} = reqBox();
+    reqZoom = Math.max(1, Math.min(MAXZOOM, zoom));   // what this stream is cut for
+    const p = lan ? {fps: 15, q: 85} : {fps: isTouch ? 12 : 10, q: isTouch ? 68 : 82};
+    // Zoomed in he is reading small text, so spend the bytes on quality. Only
+    // changed tiles go over the wire, so a still screen still costs nothing.
+    if (reqZoom > 1.5) p.q = Math.min(90, p.q + 12);
+    lastBox = vw + 'x' + vh;
+    screenWs = new WebSocket(`${proto}//${location.host}/api/screen`
+                             + `?fps=${p.fps}&q=${p.q}&vw=${vw}&vh=${vh}&dpr=${dpr}`);
     screenWs.binaryType = 'arraybuffer';
     screenWs.onmessage = async (e) => {
         if (typeof e.data === 'string') {
@@ -228,6 +286,21 @@ function screenConnect() {
             if (d.type === 'info') {
                 grid = d.grid;
                 canvas.width = grid.w; canvas.height = grid.h;
+                // CSS size = pixels / dpr, so one frame pixel lands on exactly
+                // one device pixel. A small far screen is shown 1:1 and centred
+                // rather than blown up to fill the window.
+                const vdpr = d.dpr || window.devicePixelRatio || 1;
+                screenInfo = {pw: (d.screen && d.screen.w) || grid.w,
+                              ph: (d.screen && d.screen.h) || grid.h, vdpr};
+                canvas.style.width = (grid.w / vdpr) + 'px';
+                canvas.style.height = (grid.h / vdpr) + 'px';
+                // The frame changing size is now normal — that IS the zoom
+                // arriving. Only a real resize (rotation, a desktop window
+                // dragged wider) throws the view away.
+                const wrapKey = Math.round(screenWrap.clientWidth) + 'x' + Math.round(screenWrap.clientHeight);
+                if (lastWrap && lastWrap !== wrapKey) resetZoom();
+                lastWrap = wrapKey;
+                applyZoom();
                 cctx.fillStyle = '#000'; cctx.fillRect(0, 0, grid.w, grid.h);
             }
             return;
@@ -278,7 +351,7 @@ function mods(e) {
 canvas.addEventListener('mousedown', (e) => {
     const f = frac(e); if (!f) return;
     e.preventDefault(); screenWrap.focus(); dragging = true;
-    send({t: 'down', ...f, btn: e.button === 2 ? 'right' : 'left', mods: mods(e)});
+    send({t: 'down', ...f, btn: e.button === 2 ? 'right' : 'left', mods: mods(e), clicks: e.detail || 1});
 });
 window.addEventListener('mousemove', (e) => {
     const now = Date.now(); if (now - lastMove < 25) return;
@@ -291,9 +364,10 @@ window.addEventListener('mouseup', (e) => {
     if (!dragging) return;
     dragging = false;
     const f = frac(e) || {fx: 0.5, fy: 0.5};
-    send({t: 'up', ...f, btn: e.button === 2 ? 'right' : 'left'});
+    send({t: 'up', ...f, btn: e.button === 2 ? 'right' : 'left', clicks: e.detail || 1});
 });
-canvas.addEventListener('dblclick', (e) => { const f = frac(e); if (f) send({t: 'dblclick', ...f}); });
+// No separate 'dblclick' event: the down/up pair above already carries the click count, and
+// sending both made the remote machine open things twice (fixed 2026-09-17).
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
@@ -307,17 +381,88 @@ canvas.addEventListener('wheel', (e) => {
 // finger drags, two fingers scroll, a long press right-clicks.
 if (isTouch) document.body.classList.add('touch');
 
-let touchStart = null, longPress = null, panning = false, lastPan = null, moved = false;
+let touchStart = null, longPress = null, panning = false, lastPan = null, moved = false, lastTap = null;
 
 function tfrac(t) { return frac({clientX: t.clientX, clientY: t.clientY}); }
 
+// ===== PINCH ZOOM =====
+// touch-action:none means the browser will never pan or zoom this canvas for
+// us — that is what makes a finger a real mouse, and it is also what took
+// pinch away. So the view does its own: two fingers that change distance zoom
+// the canvas, and once zoomed in, two fingers drag the view around. At 1x they
+// still scroll the remote screen, exactly as before. frac() reads the live
+// bounding box, so clicks keep landing right at any zoom.
+//
+// Zooming in two stages, and the second stage is the whole point. A CSS
+// transform follows the fingers instantly but only stretches the frame in
+// hand, which was cut to phone size — 3x that is 3x the blur. So the moment
+// the gesture settles we ask the far machine for a frame 3x larger (see
+// scheduleRefit), and it arrives at real resolution. The transform then falls
+// back to 1 and the picture is genuinely sharp, not enlarged.
+const MAXZOOM = 6;
+let zoom = 1, panX = 0, panY = 0, pinch = null;
+const zoomBtn = document.getElementById('zoomBtn');
+
+// What the picture measures at 1x: the far panel scaled to fit the window,
+// never blown up past one frame pixel per device pixel.
+function baseSize() {
+    if (!screenInfo) return {w: canvas.offsetWidth, h: canvas.offsetHeight};
+    const {pw, ph, vdpr} = screenInfo;
+    const s = Math.min(screenWrap.clientWidth / pw, screenWrap.clientHeight / ph, 1 / vdpr);
+    return {w: pw * s, h: ph * s};
+}
+// How much the frame in hand still has to be stretched to show the zoom the
+// fingers asked for. 1 once the matching frame has arrived — the sharp case.
+function viewScale() {
+    const want = baseSize().w * zoom;
+    const have = parseFloat(canvas.style.width) || canvas.offsetWidth;
+    return have > 0 ? want / have : zoom;
+}
+function clampPan() {
+    if (zoom <= 1) { zoom = 1; panX = panY = 0; return; }
+    const b = baseSize();
+    const mx = Math.max(0, (b.w * zoom - screenWrap.clientWidth) / 2);
+    const my = Math.max(0, (b.h * zoom - screenWrap.clientHeight) / 2);
+    panX = Math.min(mx, Math.max(-mx, panX));
+    panY = Math.min(my, Math.max(-my, panY));
+}
+function applyZoom() {
+    clampPan();
+    const k = viewScale();
+    canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${k})`;
+    zoomBtn.hidden = zoom === 1;
+    zoomBtn.textContent = zoom.toFixed(1) + '×';
+}
+// Zoom about a point, so the pixel under the fingers stays under the fingers.
+function zoomAt(z, px, py) {
+    z = Math.min(MAXZOOM, Math.max(1, z));
+    const k0 = viewScale();
+    const r = canvas.getBoundingClientRect();
+    const baseX = r.left + r.width / 2 - panX;   // centre with no transform
+    const baseY = r.top + r.height / 2 - panY;
+    const ux = (px - baseX - panX) / k0, uy = (py - baseY - panY) / k0;
+    zoom = z;
+    const k1 = viewScale();
+    panX = px - baseX - ux * k1; panY = py - baseY - uy * k1;
+    applyZoom();
+    scheduleRefit();
+}
+function resetZoom() { zoom = 1; panX = panY = 0; applyZoom(); scheduleRefit(); }
+function twoFinger(e) {
+    const [a, b] = [e.touches[0], e.touches[1]];
+    return {d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+            x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2};
+}
+
 canvas.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    if (e.touches.length === 2) {                       // two fingers = scroll
+    if (e.touches.length === 2) {                       // pinch, pan or scroll
         panning = true; moved = true;
-        clearTimeout(longPress);
-        lastPan = {x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-                   y: (e.touches[0].clientY + e.touches[1].clientY) / 2};
+        clearTimeout(longPress); longPress = null;
+        if (dragging) { dragging = false; if (touchStart) send({t: 'up', ...touchStart, btn: 'left'}); }
+        const g = twoFinger(e);
+        pinch = {d0: g.d, z0: zoom, x0: g.x, y0: g.y, lx: g.x, ly: g.y, mode: null};
+        lastPan = {x: g.x, y: g.y};
         return;
     }
     const f = tfrac(e.touches[0]); if (!f) return;
@@ -333,11 +478,34 @@ canvas.addEventListener('touchstart', (e) => {
 
 canvas.addEventListener('touchmove', (e) => {
     e.preventDefault();
-    if (panning && e.touches.length === 2) {
-        const x = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const y = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        send({t: 'scroll', dx: Math.round(x - lastPan.x), dy: Math.round(y - lastPan.y)});
-        lastPan = {x, y};
+    if (panning && e.touches.length === 2 && pinch) {
+        const g = twoFinger(e);
+        // Decide once what this gesture is: fingers spreading or closing means
+        // zoom, fingers moving together means pan (when zoomed in) or a scroll
+        // on the far machine (when not).
+        if (!pinch.mode) {
+            if (Math.abs(g.d / pinch.d0 - 1) > 0.08) pinch.mode = 'zoom';
+            else if (Math.hypot(g.x - pinch.x0, g.y - pinch.y0) > 14) pinch.mode = zoom > 1 ? 'pan' : 'scroll';
+            else { pinch.lx = g.x; pinch.ly = g.y; return; }
+        }
+        if (pinch.mode === 'zoom') {
+            // Anchor on where the fingers WERE, then carry the view along by
+            // how far they moved. Anchoring on the new midpoint and adding the
+            // move as well counts it twice and the picture slides away.
+            zoomAt(pinch.z0 * g.d / pinch.d0, pinch.lx, pinch.ly);
+            panX += g.x - pinch.lx; panY += g.y - pinch.ly; applyZoom();
+        } else if (pinch.mode === 'pan') {
+            const dx = g.x - pinch.lx, dy = g.y - pinch.ly, bx = panX, by = panY;
+            panX += dx; panY += dy; applyZoom();        // applyZoom clamps to the edges
+            // Dragged past the edge: the leftover scrolls the far machine, the
+            // way a zoomed page scrolls its parent once it runs out of room.
+            const rx = Math.round(dx - (panX - bx)), ry = Math.round(dy - (panY - by));
+            if (rx || ry) send({t: 'scroll', dx: rx, dy: ry});
+        } else {
+            send({t: 'scroll', dx: Math.round(g.x - pinch.lx), dy: Math.round(g.y - pinch.ly)});
+        }
+        pinch.lx = g.x; pinch.ly = g.y;
+        lastPan = {x: g.x, y: g.y};
         return;
     }
     const f = tfrac(e.touches[0]); if (!f || !touchStart) return;
@@ -354,19 +522,25 @@ canvas.addEventListener('touchmove', (e) => {
 canvas.addEventListener('touchend', (e) => {
     e.preventDefault();
     clearTimeout(longPress); longPress = null;
-    if (panning) { panning = false; return; }
+    if (panning) { panning = false; pinch = null; touchStart = null; return; }
     const f = (e.changedTouches[0] && tfrac(e.changedTouches[0])) || touchStart;
     if (dragging) { dragging = false; send({t: 'up', ...(f || touchStart), btn: 'left'}); }
     else if (!moved && touchStart) {                    // a clean tap = a click
-        send({t: 'down', ...touchStart, btn: 'left', mods: pendingMods()});
-        send({t: 'up', ...touchStart, btn: 'left'});
+        // A second tap soon after, in about the same spot, is a double-click.
+        const now = Date.now();
+        const again = lastTap && now - lastTap.t < 400 &&
+            Math.hypot(touchStart.fx - lastTap.fx, touchStart.fy - lastTap.fy) < 0.02;
+        const clicks = again ? 2 : 1;
+        lastTap = again ? null : {t: now, fx: touchStart.fx, fy: touchStart.fy};
+        send({t: 'down', ...touchStart, btn: 'left', mods: pendingMods(), clicks});
+        send({t: 'up', ...touchStart, btn: 'left', clicks});
         focusKeys();                                    // and raise the keyboard
     }
     touchStart = null;
 }, {passive: false});
 
 canvas.addEventListener('touchcancel', () => {
-    clearTimeout(longPress); longPress = null; panning = false; dragging = false; touchStart = null;
+    clearTimeout(longPress); longPress = null; panning = false; pinch = null; dragging = false; touchStart = null;
 }, {passive: false});
 
 // ===== KEYBOARD =====
@@ -406,16 +580,60 @@ function resetKeyInput() {
 }
 resetKeyInput();
 
-keyInput.addEventListener('input', () => {
+// Dictation rewrites the whole phrase on every refinement, so the field's value
+// jumps from "Can" to "Can I" to "Can I watch". Sending v.slice(PAD) each time
+// re-sent the entire sentence over and over. Now we diff against what we already sent
+// 
+// new tail. The field is no longer cleared per keystroke (that destroyed the
+// diff); it resets on Enter instead.
+let lastSent = '';
+let composing = false;
+
+function commonPrefixLen(a, b) {
+    let i = 0; const n = Math.min(a.length, b.length);
+    while (i < n && a[i] === b[i]) i++;
+    return i;
+}
+
+function clearTypedBuffer() { lastSent = ''; resetKeyInput(); }
+
+keyInput.addEventListener('compositionstart', () => { composing = true; });
+keyInput.addEventListener('compositionend', () => {
+    composing = false;
+    flushKeyInput();
+});
+
+function flushKeyInput() {
     const v = keyInput.value;
-    if (v.length > PAD.length) {
-        const typed = v.slice(PAD.length);
-        if (stickyCmd && typed.length === 1) { send({t: 'combo', k: typed, mods: ['cmd']}); clearSticky(); }
-        else send({t: 'text', s: typed});
-    } else if (v.length < PAD.length) {
+
+    // Backspace ate into the padding: the user deleted past everything typed.
+    if (v.length < PAD.length) {
+        for (let i = 0; i < lastSent.length; i++) send({t: 'key', k: 'Backspace', down: true, mods: []});
         for (let i = v.length; i < PAD.length; i++) send({t: 'key', k: 'Backspace', down: true, mods: []});
+        clearTypedBuffer();
+        return;
     }
-    resetKeyInput();
+
+    const typed = v.slice(PAD.length);
+    if (typed === lastSent) return;
+
+    const keep = commonPrefixLen(typed, lastSent);
+    // undo the part dictation revised away
+    for (let i = keep; i < lastSent.length; i++) send({t: 'key', k: 'Backspace', down: true, mods: []});
+    const added = typed.slice(keep);
+    if (added) {
+        if (stickyCmd && added.length === 1) { send({t: 'combo', k: added, mods: ['cmd']}); clearSticky(); }
+        else send({t: 'text', s: added});
+    }
+    lastSent = typed;
+
+    // keep the field from growing without bound during a long dictation
+    if (typed.length > 600) clearTypedBuffer();
+}
+
+keyInput.addEventListener('input', () => {
+    if (composing) return;      // wait for the composed result
+    flushKeyInput();
 });
 
 // keydown on the field handles ONLY what the input event cannot express:
@@ -431,6 +649,7 @@ keyInput.addEventListener('keydown', (e) => {
         e.preventDefault();
         send({t: 'key', k: e.key, down: true, mods: mods(e).concat(pendingMods())});
         clearSticky();
+        if (e.key === 'Enter' || e.key === 'Escape') clearTypedBuffer();
     }
 });
 
@@ -456,6 +675,8 @@ document.getElementById('touchBar').addEventListener('click', (e) => {
     e.preventDefault();
     if (b.id === 'kbBtn') {
         if (document.activeElement === keyInput) keyInput.blur(); else focusKeys();
+    } else if (b.id === 'zoomBtn') {
+        resetZoom();
     } else if (b.dataset.mod) {
         stickyCmd = !stickyCmd; b.classList.toggle('on', stickyCmd); focusKeys();
     } else if (b.dataset.key) {
