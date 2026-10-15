@@ -13,6 +13,7 @@ import shutil
 import signal
 import struct
 import subprocess
+import sys
 import tempfile
 import termios
 import time
@@ -282,7 +283,9 @@ def valid_session(token: str) -> bool:
         return False
     if time.time() > expiry:
         return False
-    return hmac.compare_digest(token, _sign(expiry))
+    # Compare bytes: compare_digest raises TypeError on a str with any
+    # non-ASCII character, which turned a junk cookie into a 500.
+    return hmac.compare_digest(token.encode("utf-8", "replace"), _sign(expiry).encode())
 
 
 def get_token(request: web.Request) -> str:
@@ -464,13 +467,23 @@ async def handle_command(request: web.Request):
 # FILE BROWSER + UPLOAD/DOWNLOAD
 # ═══════════════════════════════════════
 
+def _in_home(real_path: str, home: str) -> bool:
+    """True if real_path is home or somewhere under it.
+
+    A bare startswith(home) also let through siblings that merely share the
+    prefix: with home /Users/alice, /Users/alice2 and /Users/alice-backup passed.
+    """
+    home = home.rstrip(os.sep)
+    return real_path == home or real_path.startswith(home + os.sep)
+
+
 @require_auth
 async def handle_files(request: web.Request):
     path = request.query.get("path", os.path.expanduser("~/Desktop"))
     path = os.path.expanduser(path)  # handle ~ in paths
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home):
+    if not _in_home(real_path, home):
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.exists(real_path):
         return web.json_response({"error": "Path not found"}, status=404)
@@ -511,7 +524,7 @@ async def handle_file_download(request: web.Request):
     path = request.query.get("path", "")
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home):
+    if not _in_home(real_path, home):
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.isfile(real_path):
         return web.json_response({"error": "Not a file"}, status=404)
@@ -532,9 +545,13 @@ async def handle_file_upload(request: web.Request):
             dest_dir = (await field.text()).strip() or dest_dir
         elif field.name == "file":
             file_field = field
-            filename = field.filename
+            # A name, never a path: "../../x" or "/abs/x" from the client used
+            # to be joined onto real_dest as-is and land outside it.
+            filename = os.path.basename(field.filename or "")
+            if filename in ("", ".", ".."):
+                return web.json_response({"error": "Bad filename"}, status=400)
             real_dest = os.path.realpath(dest_dir)
-            if not real_dest.startswith(home):
+            if not _in_home(real_dest, home):
                 return web.json_response({"error": "Access denied"}, status=403)
             os.makedirs(real_dest, exist_ok=True)
             filepath = os.path.join(real_dest, filename)
@@ -555,7 +572,7 @@ async def handle_file_delete(request: web.Request):
     path = data.get("path", "")
     home = os.path.expanduser("~")
     real_path = os.path.realpath(path)
-    if not real_path.startswith(home) or real_path == home:
+    if not _in_home(real_path, home) or real_path == home:
         return web.json_response({"error": "Access denied"}, status=403)
     if not os.path.exists(real_path):
         return web.json_response({"error": "Not found"}, status=404)
@@ -573,7 +590,7 @@ async def handle_file_move(request: web.Request):
     src = data.get("src", "")
     dst = data.get("dst", "")
     home = os.path.expanduser("~")
-    if not os.path.realpath(src).startswith(home) or not os.path.realpath(dst).startswith(home):
+    if not _in_home(os.path.realpath(src), home) or not _in_home(os.path.realpath(dst), home):
         return web.json_response({"error": "Access denied"}, status=403)
     shutil.move(src, dst)
     return web.json_response({"ok": True})

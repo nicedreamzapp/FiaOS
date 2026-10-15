@@ -16,7 +16,7 @@ BLOCKED_PATTERNS = [
     r"\brm\s+-rf\s+~\s*$",         # rm -rf ~
     r"\bmkfs\b",                    # format disk
     r"\bdd\s+if=.+of=/dev/",       # dd to disk device
-    r"\b:(){ :\|:& };:",           # fork bomb
+    r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:",  # fork bomb
     r"\bshutdown\b",               # shutdown
     r"\breboot\b",                  # reboot
     r"\bhalt\b",                    # halt
