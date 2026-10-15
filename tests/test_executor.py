@@ -225,3 +225,8 @@ def test_raw_still_blocks(ex, monkeypatch):
     monkeypatch.setattr(asyncio, "create_subprocess_shell", never)
     out = run(ex.execute_command("RAW: reboot"))
     assert out["output"].startswith("BLOCKED")
+
+
+@pytest.mark.parametrize("cmd", [":(){ :|:& };:", ":(){ :|: & };:", ":() { : | : & } ; :"])
+def test_fork_bomb_blocked(ex, cmd):
+    assert not ex.is_command_safe(cmd)
