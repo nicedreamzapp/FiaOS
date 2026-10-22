@@ -24,8 +24,8 @@
 
 </div>
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner.svg" width="100%" alt="01. What it is. A live screen and a real terminal in any browser"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1.svg" width="100%" alt="62 auth and session checks passed, 0 failed. 2 operating systems: macOS and Windows. 3 machines in the reference setup."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-banner.svg" width="100%" alt="01. What it is. A live screen and a real terminal in any browser"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-r1.svg" width="100%" alt="62 auth and session checks passed, 0 failed. 2 operating systems: macOS and Windows. 3 machines in the reference setup."></picture>
 
 ### ⚡ What it is
 
@@ -58,9 +58,9 @@ Built by **Matt Macosko**. Everything below is his code in this repo:
 
 **Upstream, not his:** [xterm.js](https://xtermjs.org/) (vendored in `static/vendor/`), [aiohttp](https://docs.aiohttp.org/), [psutil](https://psutil.readthedocs.io/), [pywinpty](https://github.com/andfoy/pywinpty), PyObjC Quartz, Pillow, NumPy, nginx and OpenSSH. The natural-language helper shells out to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) and falls back to a local [Ollama](https://ollama.com/) model (`qwen3-coder`). The voice work listed in [CREDITS.md](CREDITS.md) (PersonaPlex on MLX and friends) is upstream too.
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s01-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner.svg" width="100%" alt="02. One URL, every machine. Machine tabs, and a real Windows port"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s02-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s02-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s02-banner.svg" width="100%" alt="02. One URL, every machine. Machine tabs, and a real Windows port"></picture>
 
 **0.57 ms over a Thunderbolt bridge, vs 63 ms and unstable over wifi**
 
@@ -103,10 +103,10 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 > **Volume is the one honest gap.** Windows exposes no scriptable master volume without a COM dependency, so FiaOS drives the media keys instead — stepped up/down, and `GET /api/volume` returns `null` rather than inventing a number it can't read.
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s02-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner.svg" width="100%" alt="03. In action. Screenshots from the running app"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1.svg" width="100%" alt="Every machine, one login. Each tab probes its own machine. Claude Code anywhere. The Terminal tab is a real PTY. Phone-friendly. A real shell on every machine you own."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-banner.svg" width="100%" alt="03. In action. Screenshots from the running app"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-r1.svg" width="100%" alt="Every machine, one login. Each tab probes its own machine. Claude Code anywhere. The Terminal tab is a real PTY. Phone-friendly. A real shell on every machine you own."></picture>
 
 ### 🎬 In action
 
@@ -140,10 +140,10 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 > *Open the URL on your phone, log in once, and you've got a real shell on every machine you own, in your pocket.*
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s03-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner.svg" width="100%" alt="04. Why, use cases and comparisons. Where FiaOS fits"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1.svg" width="100%" alt="One auth-gated page. tailscale, an SSH client and a VNC viewer each do a piece; FiaOS bundles them. Claude Code on iPhone. Your desktop does the heavy lifting; your phone is the front-end. Replace SSH + VNC + RDP. One web page instead of three apps."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-banner.svg" width="100%" alt="04. Why, use cases and comparisons. Where FiaOS fits"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-r1.svg" width="100%" alt="One auth-gated page. tailscale, an SSH client and a VNC viewer each do a piece; FiaOS bundles them. Claude Code on iPhone. Your desktop does the heavy lifting; your phone is the front-end. Replace SSH + VNC + RDP. One web page instead of three apps."></picture>
 
 ### 🧠 Why
 
@@ -176,10 +176,10 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 | iSH / Termius | Live shell | ❌ | ✅ | ⚠️ per-host | ✅ | ⚠️ | ✅ required |
 | ChatGPT app | Cloud chat | ❌ | ❌ | ❌ | ✅ | ❌ cloud | ✅ required |
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s04-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner.svg" width="100%" alt="05. Install. macOS, Windows, password, run, remote"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1.svg" width="100%" alt="macOS. Apple Silicon, macOS 14+, Python 3.12+. Windows. Windows 10/11, Python 3.12+, in the interactive desktop session. Password required. The server refuses to start without FIAOS_PASSWORD."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-banner.svg" width="100%" alt="05. Install. macOS, Windows, password, run, remote"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-r1.svg" width="100%" alt="macOS. Apple Silicon, macOS 14+, Python 3.12+. Windows. Windows 10/11, Python 3.12+, in the interactive desktop session. Password required. The server refuses to start without FIAOS_PASSWORD."></picture>
 
 ### 🚀 Install
 
@@ -250,10 +250,10 @@ FIAOS_PASSWORD='your-strong-password' .venv/bin/python3 server.py
 
 Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them in the `map` block. Home network only? Skip this entirely and hit `http://your-machine.local:9000`.
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s05-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner.svg" width="100%" alt="06. Security and known limits. What is guarded, and what does not work yet"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1.svg" width="100%" alt="No default password. No fallback in the source. Rate-limited login. 10 attempts per 5 minutes per IP. Treat it like an SSH key. Anyone with the password has the same power as SSH."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-banner.svg" width="100%" alt="06. Security and known limits. What is guarded, and what does not work yet"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-r1.svg" width="100%" alt="No default password. No fallback in the source. Rate-limited login. 10 attempts per 5 minutes per IP. Treat it like an SSH key. Anyone with the password has the same power as SSH."></picture>
 
 ### 🔒 Security
 
@@ -278,10 +278,10 @@ What does not work yet, or needs manual steps:
 - **`tests/test_infra.sh` needs a real deployment** (`FIA_VPS`, `FIA_URL`, and the reference setup's LaunchAgents). `tests/test_auth.py` and the pytest suite run anywhere.
 - **Windows volume** is media keys only, as noted above.
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s06-rule.svg" width="100%" alt="">
 
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner.svg" width="100%" alt="07. Layout, tech, FAQ and license. Reference"></picture>
-<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1.svg" width="100%" alt="Backend. Python 3.12, aiohttp, psutil. Frontend. Vanilla JS, xterm.js 5.3, WebSocket, Canvas. MIT. Free and open source."></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-banner.svg" width="100%" alt="07. Layout, tech, FAQ and license. Reference"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-r1.svg" width="100%" alt="Backend. Python 3.12, aiohttp, psutil. Frontend. Vanilla JS, xterm.js 5.3, WebSocket, Canvas. MIT. Free and open source."></picture>
 
 ### 📁 Layout
 
@@ -400,7 +400,7 @@ FiaOS is free and open source. If it is useful to you, you can sponsor the work 
 
 MIT — see [LICENSE](LICENSE).
 
-<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-rule.svg" width="100%" alt="">
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/6a229624f0d7fb1e221fc4708360ecea7449812e/assets/readme/s07-rule.svg" width="100%" alt="">
 
 <div align="center">
 
