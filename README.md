@@ -24,9 +24,10 @@
 
 </div>
 
----
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-banner.svg" width="100%" alt="01. What it is. A live screen and a real terminal in any browser"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-r1.svg" width="100%" alt="62 auth and session checks passed, 0 failed. 2 operating systems: macOS and Windows. 3 machines in the reference setup."></picture>
 
-## ⚡ What it is
+### ⚡ What it is
 
 **FiaOS is a small Python web server you run on each of your computers; it gives you that machine's live screen and a real terminal in any browser, behind one password.**
 
@@ -43,9 +44,7 @@ Three things, that's it:
 
 Two panels and a machine picker. That's the whole product.
 
----
-
-## 👷 What I built
+### 👷 What I built
 
 Built by **Matt Macosko**. Everything below is his code in this repo:
 
@@ -59,9 +58,18 @@ Built by **Matt Macosko**. Everything below is his code in this repo:
 
 **Upstream, not his:** [xterm.js](https://xtermjs.org/) (vendored in `static/vendor/`), [aiohttp](https://docs.aiohttp.org/), [psutil](https://psutil.readthedocs.io/), [pywinpty](https://github.com/andfoy/pywinpty), PyObjC Quartz, Pillow, NumPy, nginx and OpenSSH. The natural-language helper shells out to the [Claude Code](https://claude.com/claude-code) CLI (`claude -p`) and falls back to a local [Ollama](https://ollama.com/) model (`qwen3-coder`). The voice work listed in [CREDITS.md](CREDITS.md) (PersonaPlex on MLX and friends) is upstream too.
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s01-rule.svg" width="100%" alt="">
 
-## 🖥️ One URL. Every machine.
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-banner.svg" width="100%" alt="02. One URL, every machine. Machine tabs, and a real Windows port"></picture>
+
+**0.57 ms over a Thunderbolt bridge, vs 63 ms and unstable over wifi**
+
+🍪 **The cookie is the router** · Picking a tab sets fia_target and nginx maps it to that machine.
+
+🪟 **Windows 10 and 11** · A real port, not a compatibility shim.
+
+
+### 🖥️ One URL. Every machine.
 
 This is the part that makes FiaOS different from "a web SSH client."
 
@@ -76,9 +84,7 @@ You get **machine tabs** across the top — MINI · M5 · PC. Tap one, and the e
 
 The reference deployment runs a Mac mini, a MacBook Pro, and a Windows PC on one hostname. Add or drop a machine by editing one `map` block in [`deploy/nginx-fia.conf`](deploy/nginx-fia.conf).
 
----
-
-## 🪟 Windows
+### 🪟 Windows
 
 FiaOS started on Apple Silicon. It now runs on Windows 10/11 too — a real port living in [`windows/`](windows/), not a compatibility shim.
 
@@ -97,9 +103,12 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 > **Volume is the one honest gap.** Windows exposes no scriptable master volume without a COM dependency, so FiaOS drives the media keys instead — stepped up/down, and `GET /api/volume` returns `null` rather than inventing a number it can't read.
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s02-rule.svg" width="100%" alt="">
 
-## 🎬 In action
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-banner.svg" width="100%" alt="03. In action. Screenshots from the running app"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-r1.svg" width="100%" alt="Every machine, one login. Each tab probes its own machine. Claude Code anywhere. The Terminal tab is a real PTY. Phone-friendly. A real shell on every machine you own."></picture>
+
+### 🎬 In action
 
 ### Every machine, one login
 
@@ -131,17 +140,18 @@ Same routes, same UI, same password, same session tokens. Switch to the PC tab a
 
 > *Open the URL on your phone, log in once, and you've got a real shell on every machine you own, in your pocket.*
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s03-rule.svg" width="100%" alt="">
 
-## 🧠 Why
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-banner.svg" width="100%" alt="04. Why, use cases and comparisons. Where FiaOS fits"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-r1.svg" width="100%" alt="One auth-gated page. tailscale, an SSH client and a VNC viewer each do a piece; FiaOS bundles them. Claude Code on iPhone. Your desktop does the heavy lifting; your phone is the front-end. Replace SSH + VNC + RDP. One web page instead of three apps."></picture>
+
+### 🧠 Why
 
 `tailscale` + an SSH client + a VNC viewer can each do a piece of this. FiaOS bundles them into **one auth-gated web page** so you can drive your whole fleet from any device — without installing anything client-side.
 
 The Terminal tab specifically gets you a working **Claude Code session on your Mac, from your phone**. That's the killer feature this whole thing was built around. The machine tabs are what happened when one Mac turned into three computers.
 
----
-
-## 💡 Use cases
+### 💡 Use cases
 
 > If any of these describe you, FiaOS exists for you.
 
@@ -152,9 +162,7 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 - **📡 Replace SSH + VNC + RDP** — One web page does what used to take three apps and a subscription.
 - **✈️ Travel light** — Borrow any laptop, hit your URL, you're back at your dev environment.
 
----
-
-## ⚖️ Compared to
+### ⚖️ Compared to
 
 > **Already using [`claude-screen-to-phone`](https://github.com/nicedreamzapp/claude-screen-to-phone)?** That's the **async** sibling — text a command from anywhere, your Mac executes it, you get screenshots/videos back as iMessages. **FiaOS is the live mode** — open a web page, you're sitting at the machine in real time. Different superpowers, same family.
 
@@ -168,9 +176,12 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 | iSH / Termius | Live shell | ❌ | ✅ | ⚠️ per-host | ✅ | ⚠️ | ✅ required |
 | ChatGPT app | Cloud chat | ❌ | ❌ | ❌ | ✅ | ❌ cloud | ✅ required |
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s04-rule.svg" width="100%" alt="">
 
-## 🚀 Install
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-banner.svg" width="100%" alt="05. Install. macOS, Windows, password, run, remote"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-r1.svg" width="100%" alt="macOS. Apple Silicon, macOS 14+, Python 3.12+. Windows. Windows 10/11, Python 3.12+, in the interactive desktop session. Password required. The server refuses to start without FIAOS_PASSWORD."></picture>
+
+### 🚀 Install
 
 ### macOS
 
@@ -239,9 +250,12 @@ FIAOS_PASSWORD='your-strong-password' .venv/bin/python3 server.py
 
 Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them in the `map` block. Home network only? Skip this entirely and hit `http://your-machine.local:9000`.
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s05-rule.svg" width="100%" alt="">
 
-## 🔒 Security
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-banner.svg" width="100%" alt="06. Security and known limits. What is guarded, and what does not work yet"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-r1.svg" width="100%" alt="No default password. No fallback in the source. Rate-limited login. 10 attempts per 5 minutes per IP. Treat it like an SSH key. Anyone with the password has the same power as SSH."></picture>
+
+### 🔒 Security
 
 | ✅ | Server **refuses to start** without `FIAOS_PASSWORD` set — no default fallback in the source |
 | --- | --- |
@@ -253,9 +267,7 @@ Give each machine its own remote port (`9000`, `9010`, `9020`…) and list them 
 | ⚠️ | The blocked-command regexes stop the obvious footguns (`rm -rf /`, `rd /s C:\…`, "kill FiaOS itself"). They are a **guardrail on the natural-language command path, not a security boundary.** A real shell can run arbitrary scripts. |
 | 💡 | Want 2FA? Put FiaOS behind a reverse proxy that does it (Cloudflare Access, Authelia, etc.). |
 
----
-
-## 🚧 Known limits
+### 🚧 Known limits
 
 What does not work yet, or needs manual steps:
 
@@ -266,9 +278,12 @@ What does not work yet, or needs manual steps:
 - **`tests/test_infra.sh` needs a real deployment** (`FIA_VPS`, `FIA_URL`, and the reference setup's LaunchAgents). `tests/test_auth.py` and the pytest suite run anywhere.
 - **Windows volume** is media keys only, as noted above.
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s06-rule.svg" width="100%" alt="">
 
-## 📁 Layout
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-banner.svg" width="100%" alt="07. Layout, tech, FAQ and license. Reference"></picture>
+<picture><source media="(max-width: 610px), (min-width: 768px) and (max-width: 895px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1-m.svg"><source media="(max-width: 1149px)" srcset="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1-mid.svg"><img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-r1.svg" width="100%" alt="Backend. Python 3.12, aiohttp, psutil. Frontend. Vanilla JS, xterm.js 5.3, WebSocket, Canvas. MIT. Free and open source."></picture>
+
+### 📁 Layout
 
 ```
 server.py               ─ macOS aiohttp server: routes, PTY terminal, screen, files
@@ -310,9 +325,7 @@ start.sh                ─ dev helper (server + tunnel + caffeinate; still trie
 watchdog.sh             ─ keep-alive checker (still tries to start voice)
 ```
 
----
-
-## 🛠️ Tech
+### 🛠️ Tech
 
 - **Backend:** Python 3.12 · [`aiohttp`](https://docs.aiohttp.org/) · [`psutil`](https://psutil.readthedocs.io/)
 - **Terminal:** [`pty`](https://docs.python.org/3/library/pty.html) on macOS · [ConPTY via `pywinpty`](https://github.com/andfoy/pywinpty) on Windows
@@ -320,9 +333,7 @@ watchdog.sh             ─ keep-alive checker (still tries to start voice)
 - **Frontend:** vanilla JS · [xterm.js 5.3](https://xtermjs.org/) · WebSocket · Canvas
 - **Edge:** OpenSSH reverse forwarding · nginx HTTPS termination + cookie-based upstream routing
 
----
-
-## ❓ FAQ
+### ❓ FAQ
 
 <details>
 <summary><strong>Does this replace SSH?</strong></summary>
@@ -378,23 +389,18 @@ Tailscale + SSH gives you a terminal, per host. FiaOS gives you a terminal **plu
 Sort of. Cursor mobile is a polished AI-coding UI tied to a SaaS. FiaOS is a self-hosted web shell that lets you run *whatever* AI coding agent you want (Claude Code, Aider, gh-copilot, your own scripts) on hardware you control.
 </details>
 
----
 
 If you want the Claude Code session in the Terminal tab to run on local MLX models with no API key, I made [claude-code-local](https://github.com/nicedreamzapp/claude-code-local) for that on the Mac.
 
----
-
-## 💚 Sponsor
+### 💚 Sponsor
 
 FiaOS is free and open source. If it is useful to you, you can sponsor the work at [github.com/sponsors/nicedreamzapp](https://github.com/sponsors/nicedreamzapp).
 
----
-
-## 📜 License
+### 📜 License
 
 MIT — see [LICENSE](LICENSE).
 
----
+<img src="https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/assets/readme/s07-rule.svg" width="100%" alt="">
 
 <div align="center">
 
