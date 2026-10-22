@@ -186,6 +186,8 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 ### macOS
 
 > **Requires:** Apple Silicon Mac · macOS 14+ · Python 3.12+
+>
+> **Intel Macs:** a user reports the same macOS steps work out of the box on a 2019 Intel MacBook Pro 16" (i7, 16 GB) running macOS Tahoe 26.6; the desktop view is slow there, the terminal is fine. ([#7](https://github.com/nicedreamzapp/FiaOS/issues/7), thanks @xWaLeEdOoOx)
 
 ```bash
 git clone https://github.com/nicedreamzapp/FiaOS.git
