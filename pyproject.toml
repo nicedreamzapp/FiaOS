@@ -7,7 +7,7 @@ dependencies = [
     "safetensors >= 0.4.0, < 0.6",
     "huggingface-hub >= 0.24, < 0.29",
     "rustymimi == 0.4.1",
-    "sentencepiece == 0.2",
+    "sentencepiece == 0.2.1",
     "sounddevice == 0.5",
     "sphn >= 0.2.0, < 0.3.0",
     "mlx >= 0.26.0, < 0.27",
