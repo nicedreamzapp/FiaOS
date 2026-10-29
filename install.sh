@@ -186,6 +186,11 @@ EOF
 
 DOMAIN="gui/$(id -u)"
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+# bootout returns before the job is fully gone; bootstrap fails (error 5) until it is.
+for _ in $(seq 1 20); do
+    launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+    sleep 0.5
+done
 # Give launchd a moment to release the old process and its port.
 for _ in 1 2 3 4 5 6 7 8 9 10; do
     lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1 || break
@@ -195,7 +200,7 @@ if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
     rm -f "$PLIST"
     die "port $PORT is already in use by another program. Pick another with FIAOS_PORT=<port>."
 fi
-launchctl bootstrap "$DOMAIN" "$PLIST"
+launchctl bootstrap "$DOMAIN" "$PLIST" 2>/dev/null || { sleep 2; launchctl bootstrap "$DOMAIN" "$PLIST"; }
 
 say "waiting for the server on port $PORT"
 up=0
