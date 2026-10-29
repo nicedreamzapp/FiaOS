@@ -209,7 +209,17 @@ python3.12 -m venv .venv
 
 ### Windows
 
-> **Requires:** Windows 10/11 · Python 3.12+ · must run in the **interactive desktop session** (screen capture and `SendInput` don't work from a service)
+> **Requires:** Windows 10/11 · Python 3.11+ (3.13 recommended) · git · must run in the **interactive desktop session** (screen capture and `SendInput` don't work from a service)
+
+One line in PowerShell. It clones FiaOS, builds the venv, asks for your password (typed, never on a command line, saved to `C:\ProgramData\fia\fiaos.env` readable only by you) and adds a logon task that runs it with no window:
+
+```powershell
+irm https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/windows/install.ps1 | iex
+```
+
+Uninstall (keeps your folder and password file unless you add `-Purge`): `powershell -ExecutionPolicy Bypass -File $HOME\FiaOS\windows\uninstall.ps1`
+
+Or by hand:
 
 ```powershell
 git clone https://github.com/nicedreamzapp/FiaOS.git

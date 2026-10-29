@@ -24,7 +24,8 @@ from executor import execute_command
 import screencast
 
 # --- Config ---
-PORT = 9000
+PORT = int(os.environ.get("FIAOS_PORT", "9000"))
+HOST = os.environ.get("FIAOS_HOST", "0.0.0.0")   # 127.0.0.1 keeps it off the LAN
 FIAOS_DIR = Path(__file__).parent
 STATIC_DIR = FIAOS_DIR / "static"
 MACHINE_KEY = os.environ.get("FIAOS_MACHINE", "mini")  # mini | m5 | pc
@@ -1650,4 +1651,4 @@ if __name__ == "__main__":
     print(f"[FiaOS] Dashboard: http://localhost:{PORT}")
     _preflight()
     app = create_app()
-    web.run_app(app, host="0.0.0.0", port=PORT)
+    web.run_app(app, host=HOST, port=PORT)

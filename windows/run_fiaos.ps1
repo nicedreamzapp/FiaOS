@@ -2,9 +2,12 @@
 # Reads credentials from C:\ProgramData\fia\fiaos.env so no secret ever appears
 # on a command line, then runs the server in the interactive session (screen
 # capture and SendInput only work from inside the logged-in desktop).
+# -EnvFile points it at another env file (install.ps1 passes the one it wrote);
+# the log sits next to that file.
+param([string]$EnvFile = 'C:\ProgramData\fia\fiaos.env')
 $ErrorActionPreference = 'Continue'
-$envFile = 'C:\ProgramData\fia\fiaos.env'
-$log = 'C:\ProgramData\fia\fiaos.log'
+$envFile = $EnvFile
+$log = Join-Path (Split-Path -Parent $envFile) 'fiaos.log'
 
 Get-Content $envFile | ForEach-Object {
     if ($_ -match '^\s*([A-Z_]+)=(.*)$') {

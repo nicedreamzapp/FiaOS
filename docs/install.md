@@ -53,7 +53,17 @@ Why each package is needed, from the imports:
 
 ## Windows
 
-**Requires:** Windows 10/11, Python 3.12+. The server must run in the **interactive desktop session** of a logged-in user. Screen capture (GDI `BitBlt`) and `SendInput` don't work from a Windows service.
+**Requires:** Windows 10/11, Python 3.11+ (3.13 recommended; `aiohttp` 3.10 has no 3.14 wheels yet). The server must run in the **interactive desktop session** of a logged-in user. Screen capture (GDI `BitBlt`) and `SendInput` don't work from a Windows service.
+
+The one-liner does everything below, prompts for the password with `Read-Host -AsSecureString`, and registers a hidden logon task named `FiaOS`:
+
+```powershell
+irm https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/windows/install.ps1 | iex
+```
+
+`windows\uninstall.ps1` removes the task and stops the server; add `-Purge` to also delete the folder and the env file.
+
+By hand:
 
 ```powershell
 git clone https://github.com/nicedreamzapp/FiaOS.git

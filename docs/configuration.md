@@ -64,7 +64,7 @@ None of these can be changed without editing the source.
 
 | Setting | Value | Where |
 |---|---|---|
-| Listen address and port | `0.0.0.0:9000` | `PORT`, `web.run_app(...)` in both servers |
+| Listen address and port | `0.0.0.0:9000` | `PORT`, `web.run_app(...)` in both servers; on Windows `FIAOS_PORT` and `FIAOS_HOST` in the env file override them |
 | Session lifetime | 24 hours (`SESSION_EXPIRY = 86400`) | both |
 | Login rate limit | 10 failed attempts (`MAX_LOGIN_ATTEMPTS`) per 5 minutes (`LOGIN_WINDOW = 300`) per client IP | both |
 | Rate-limit table cap | 4096 IPs (`MAX_IP_BUCKETS`); the 64 oldest are evicted when full | both |
