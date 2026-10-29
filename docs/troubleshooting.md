@@ -32,7 +32,7 @@ You probably installed `requirements.txt`, which is the old voice project's list
 
 ### Address already in use (port 9000)
 
-The port is hard-coded to 9000. Something else, often an older FiaOS, is already listening. On macOS, `lsof -i :9000` shows what. If a LaunchAgent with `KeepAlive` is running, it restarts the server whenever you kill it. Unload it first with `launchctl unload ~/Library/LaunchAgents/com.fiaos.server.plist`.
+The port defaults to 9000 (on macOS, `FIAOS_PORT` changes it). Something else, often an older FiaOS, is already listening. On macOS, `lsof -i :9000` shows what. If a LaunchAgent with `KeepAlive` is running, it restarts the server whenever you kill it. Unload it first with `launchctl unload ~/Library/LaunchAgents/com.fiaos.server.plist`.
 
 ## Windows preflight failures
 

@@ -13,6 +13,7 @@ Everything on this page comes from the source. FiaOS has no config file and no c
 |---|---|---|---|
 | `FIAOS_PASSWORD` | `server.py`, `windows/server.py` | none, **required** | The login password. Also the HMAC key that signs session tokens. If it's unset, the server exits at import time. Every machine in a fleet must use the same value. Changing it invalidates every session on every machine. |
 | `FIAOS_MACHINE` | both servers | `mini` | Which machine this copy is: `mini`, `m5` or `pc`. On both servers it decides which entry in the peer table is "this machine" (that entry is never proxied to) and what `/machines/probe/<key>` reports as local. |
+| `FIAOS_PORT` | macOS `server.py`, `start.sh`, `watchdog.sh` | `9000` | Port the macOS server listens on. The Windows server ignores it. |
 | `FIAOS_PEERS` | both servers | Windows: placeholder table (see below). macOS: empty (no peers, every tab stays local) | LAN addresses of the other machines, for the built-in machine proxy. On macOS put it in `~/.config/fiaos/fiaos.env`. Format: `key=host:port[,host:port...]` entries separated by `;`. |
 
 Example `FIAOS_PEERS`, taken from the comment in `windows/server.py`:

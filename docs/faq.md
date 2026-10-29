@@ -51,7 +51,7 @@ It was in the April 2026 release and was removed in v2. Voice now lives in a sep
 
 ## Can I change the port?
 
-Not without editing the code. `PORT = 9000` is hard-coded in both servers. Behind nginx it doesn't matter, because each machine gets its own port on the VPS through its tunnel.
+On macOS, yes: set `FIAOS_PORT` (the installer writes it into the LaunchAgent). The Windows server still hard-codes `PORT = 9000`. Behind nginx it doesn't matter, because each machine gets its own port on the VPS through its tunnel.
 
 ## Can I add more than three machines?
 

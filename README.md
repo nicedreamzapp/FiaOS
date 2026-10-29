@@ -189,6 +189,14 @@ The Terminal tab specifically gets you a working **Claude Code session on your M
 >
 > **Intel Macs:** a user reports the same macOS steps work out of the box on a 2019 Intel MacBook Pro 16" (i7, 16 GB) running macOS Tahoe 26.6; the desktop view is slow, about like AnyDesk, but fully usable. ([#7](https://github.com/nicedreamzapp/FiaOS/issues/7), thanks @xWaLeEdOoOx)
 
+**One line** (clones to `~/FiaOS`, builds the venv, asks for a password, installs a LaunchAgent on port 9000):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/install.sh | bash
+```
+
+Uninstall: `curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/uninstall.sh | bash` (add `-s -- --purge` to also delete the checkout and password file). Options such as `FIAOS_PORT`, `FIAOS_DIR` and `FIAOS_PASSWORD_FILE` are listed at the top of [`install.sh`](install.sh). By hand instead:
+
 ```bash
 git clone https://github.com/nicedreamzapp/FiaOS.git
 cd FiaOS
@@ -239,7 +247,7 @@ FIAOS_PASSWORD='your-strong-password' .venv/bin/python3 server.py
 
 | Platform | How |
 |---|---|
-| macOS | Copy [`examples/com.fiaos.server.plist`](examples/com.fiaos.server.plist) to `~/Library/LaunchAgents/`, set `FIAOS_PASSWORD` and `FIAOS_MACHINE`, then `launchctl load` it. |
+| macOS | `install.sh` does this for you. By hand: copy [`examples/com.fiaos.server.plist`](examples/com.fiaos.server.plist) to `~/Library/LaunchAgents/`, set `FIAOS_PASSWORD` and `FIAOS_MACHINE`, then `launchctl load` it. |
 | Windows | Register [`run_fiaos.ps1`](windows/run_fiaos.ps1) as a Task Scheduler **"at logon"** task for your user. It already restarts on exit and rotates its own log at 5 MB. |
 
 ### 4. Make it remote (optional)

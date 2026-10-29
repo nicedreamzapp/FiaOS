@@ -14,6 +14,8 @@ fi
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
+PORT="${FIAOS_PORT:-9000}"
+export FIAOS_PORT="$PORT"
 
 FIA_PROMPT="${FIA_PROMPT:-You are a helpful local voice assistant. Keep replies short.}"
 
@@ -38,7 +40,7 @@ start_tunnel() {
         return
     fi
     echo "[Watchdog] Starting SSH tunnel to $VPS_IP..."
-    nohup ssh -N -R 9000:localhost:9000 "root@$VPS_IP" \
+    nohup ssh -N -R "$PORT:localhost:$PORT" "root@$VPS_IP" \
         -o ServerAliveInterval=30 \
         -o ServerAliveCountMax=3 \
         -o StrictHostKeyChecking=no \
@@ -57,7 +59,7 @@ while true; do
         sleep 30
     fi
 
-    if ! lsof -i:9000 -sTCP:LISTEN > /dev/null 2>&1; then
+    if ! lsof -i:"$PORT" -sTCP:LISTEN > /dev/null 2>&1; then
         echo "[Watchdog] $(date) — FiaOS server DOWN, restarting..."
         pkill -9 -f "server.py" 2>/dev/null
         sleep 2
@@ -65,7 +67,7 @@ while true; do
         sleep 3
     fi
 
-    if [[ -n "$VPS_IP" ]] && ! pgrep -f "ssh.*9000:localhost" > /dev/null 2>&1; then
+    if [[ -n "$VPS_IP" ]] && ! pgrep -f "ssh.*$PORT:localhost" > /dev/null 2>&1; then
         echo "[Watchdog] $(date) — SSH tunnel DOWN, restarting..."
         start_tunnel
         sleep 3

@@ -10,11 +10,19 @@ FiaOS has two servers that share the same routes, UI and session format:
 - `server.py` at the repo root, for macOS
 - `windows/server.py`, for Windows 10/11
 
-Both listen on port **9000** on all interfaces (`0.0.0.0`). The port is hard-coded as `PORT = 9000` in both files.
+Both listen on port **9000** on all interfaces (`0.0.0.0`). On macOS set `FIAOS_PORT` to use another port; the Windows server still hard-codes `PORT = 9000`.
 
 ## macOS
 
 **Requires:** Apple Silicon Mac, macOS 14+, Python 3.12+ (from the README; TODO-VERIFY whether Intel Macs or older macOS work, nothing in the code checks for them).
+
+The quick way, which does every step below plus the password file and a LaunchAgent:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/install.sh | bash
+```
+
+Remove it with `curl -fsSL https://raw.githubusercontent.com/nicedreamzapp/FiaOS/main/uninstall.sh | bash` (add `-s -- --purge` to delete the checkout and `~/.config/fiaos/fiaos.env` too). The manual steps:
 
 ```bash
 git clone https://github.com/nicedreamzapp/FiaOS.git

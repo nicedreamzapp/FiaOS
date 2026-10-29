@@ -27,7 +27,7 @@ from executor import execute_command
 import screencast
 
 # --- Config ---
-PORT = 9000
+PORT = int(os.environ.get("FIAOS_PORT", "9000"))
 FIAOS_DIR = Path(__file__).parent
 STATIC_DIR = FIAOS_DIR / "static"
 MACHINE_KEY = os.environ.get("FIAOS_MACHINE", "mini")  # mini | m5 | pc
