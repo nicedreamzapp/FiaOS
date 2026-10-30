@@ -272,10 +272,14 @@ function screenConnect() {
     const dpr = window.devicePixelRatio || 1;
     const {vw, vh} = reqBox();
     reqZoom = Math.max(1, Math.min(MAXZOOM, zoom));   // what this stream is cut for
-    const p = lan ? {fps: 15, q: 85} : {fps: isTouch ? 12 : 10, q: isTouch ? 68 : 82};
-    // Zoomed in he is reading small text, so spend the bytes on quality. Only
-    // changed tiles go over the wire, so a still screen still costs nothing.
-    if (reqZoom > 1.5) p.q = Math.min(90, p.q + 12);
+    // Off the LAN stay under q70: the worker switches JPEG to 4:4:4 at 70 and
+    // above, which with q82 doubled the bytes per frame (0.20 -> 0.45 MB) and
+    // sank a ~15 Mbps home uplink while scrolling (2026-10-15). The frame is
+    // still cut to the exact box, so it is sharp; only chroma is subsampled.
+    const p = lan ? {fps: 15, q: 85} : {fps: isTouch ? 12 : 10, q: 68};
+    // Zoomed in he is reading small text, so spend the bytes on quality -- but
+    // on the LAN only; off it the zoomed frame is already more pixels.
+    if (reqZoom > 1.5) p.q = Math.min(lan ? 90 : 69, p.q + 12);
     lastBox = vw + 'x' + vh;
     screenWs = new WebSocket(`${proto}//${location.host}/api/screen`
                              + `?fps=${p.fps}&q=${p.q}&vw=${vw}&vh=${vh}&dpr=${dpr}`);
@@ -303,6 +307,8 @@ function screenConnect() {
                 applyZoom();
                 cctx.fillStyle = '#000'; cctx.fillRect(0, 0, grid.w, grid.h);
             }
+            // flow control: the server holds back until this batch is in hand
+            if (d.type === 'f') send({t: 'ack', n: d.n});
             return;
         }
         if (!grid) return;

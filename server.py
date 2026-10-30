@@ -1131,19 +1131,73 @@ async def handle_screen_ws(request: web.Request):
     # The display is allowed to sleep like any Mac; -u wakes it the moment a
     # viewer connects and -d holds it on only for as long as this socket lives.
     awake = await asyncio.create_subprocess_exec("/usr/bin/caffeinate", "-d", "-u")
-    sent = {"tiles": 0, "bytes": 0}
+    sent = {"tiles": 0, "bytes": 0, "batches": 0, "coalesced": 0}
 
-    async def pump():
+    # Flow control (2026-10-15). The worker captures at fps no matter what the
+    # link can carry, and the old pump pushed every tile straight into the
+    # socket. On a ~15 Mbps home uplink a scrolling 2386x999 frame at q82 is
+    # ~0.45 MB; ten a second is twice the pipe, so several MB of stale tiles sat
+    # in the ssh tunnel and the viewer watched them paint ("uploading").
+    # Now the reader drops tiles into `pending` -- latest wins per tile, so a
+    # region that changed three times while the pipe was busy goes once, as it
+    # looks now -- and the sender ships a batch, marks it with a frame message,
+    # and will not have more than INFLIGHT batches outstanding until the viewer
+    # acks. In-flight data is then bounded by the viewer, not by every buffer
+    # between here and it. A page that never acks (an old viewer) only ever
+    # waits ACK_WAIT per batch, so it degrades to the old behaviour, not a stall.
+    INFLIGHT, ACK_WAIT = 2, 1.0
+    pending: dict[int, bytes] = {}
+    wake = asyncio.Event()
+    acked = {"n": 0, "off": False}
+    ack_ev = asyncio.Event()
+    reader_done = asyncio.Event()
+
+    async def reader():
         try:
             async for index, jpeg in screencast.tiles(worker):
-                await ws.send_bytes(screencast.pack(index, jpeg))
-                sent["tiles"] += 1
-                sent["bytes"] += len(jpeg)
+                if index in pending:
+                    sent["coalesced"] += 1
+                pending[index] = jpeg
+                wake.set()
         except (asyncio.IncompleteReadError, asyncio.CancelledError,
                 ConnectionResetError, RuntimeError):
             pass
+        finally:
+            reader_done.set()
+            wake.set()
 
-    task = asyncio.create_task(pump())
+    async def sender():
+        seq = 0
+        try:
+            while True:
+                if not pending:
+                    if reader_done.is_set():
+                        return
+                    wake.clear()
+                    await wake.wait()
+                    continue
+                while not acked["off"] and seq - acked["n"] >= INFLIGHT:
+                    ack_ev.clear()
+                    try:
+                        await asyncio.wait_for(ack_ev.wait(), ACK_WAIT)
+                    except asyncio.TimeoutError:
+                        # An old page never acks: fall back to the old free-running
+                        # stream rather than throttling it to one batch a second.
+                        # The first ack that does arrive switches control back on.
+                        acked["off"] = True
+                batch = list(pending.items())
+                pending.clear()
+                for index, jpeg in batch:
+                    await ws.send_bytes(screencast.pack(index, jpeg))
+                    sent["tiles"] += 1
+                    sent["bytes"] += len(jpeg)
+                seq += 1
+                sent["batches"] = seq
+                await ws.send_str(json.dumps({"type": "f", "n": seq}))
+        except (asyncio.CancelledError, ConnectionResetError, RuntimeError):
+            pass
+
+    tasks = [asyncio.create_task(reader()), asyncio.create_task(sender())]
     try:
         async for msg in ws:
             if msg.type != aiohttp.WSMsgType.TEXT:
@@ -1158,6 +1212,19 @@ async def handle_screen_ws(request: web.Request):
                     worker.stdin.write(b"R\n")
                     await worker.stdin.drain()
                 continue
+            if kind == "ack":                  # the viewer has this batch in hand
+                try:
+                    acked["n"] = max(acked["n"], int(ev.get("n", 0)))
+                except (TypeError, ValueError):
+                    pass
+                acked["off"] = False
+                ack_ev.set()
+                continue
+            if kind == "refresh":              # viewer wants the whole screen again
+                if worker.stdin:
+                    worker.stdin.write(b"R\n")
+                    await worker.stdin.drain()
+                continue
             if kind == "stats":
                 await ws.send_str(json.dumps({"type": "stats", **sent}))
                 continue
@@ -1166,7 +1233,8 @@ async def handle_screen_ws(request: web.Request):
                 inp.stdin.write(line.encode())
                 await inp.stdin.drain()
     finally:
-        task.cancel()
+        for t in tasks:
+            t.cancel()
         # The capture worker is parked, not killed: a phone backgrounding the
         # tab reconnects constantly and a cold worker costs ~166 ms every time.
         # It still dies on its own after WARM_HOLD, and its parent going away
