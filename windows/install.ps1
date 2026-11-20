@@ -45,7 +45,7 @@ function Install-FiaOS {
     throw "git not found. Install Git for Windows from https://git-scm.com/download/win"
   }
 
-  # Python 3.11-3.13 first (requirements-windows.txt pins aiohttp 3.10, which has wheels up to 3.13),
+  # Python 3.11-3.13 first (requirements-windows.txt pins aiohttp 3.14, same as the Mac server),
   # 3.14 last; the py launcher, then python on PATH.
   $python = $null
   foreach ($v in "3.13", "3.12", "3.11", "3.14") {

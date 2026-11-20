@@ -73,7 +73,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\pip install -r requirements-windows.txt
 ```
 
-`windows/requirements-windows.txt` lists `aiohttp>=3.10.5,<3.11`, `numpy>=2.1.0`, `Pillow>=10`, `psutil>=6.0.0` and `pywinpty>=2.0.13`. The Windows `executor.py` doesn't import `anthropic`, so it isn't needed there.
+`windows/requirements-windows.txt` lists `aiohttp>=3.14.5,<3.15`, `numpy>=2.1.0`, `Pillow>=10`, `psutil>=6.0.0` and `pywinpty>=2.0.13`. The Windows `executor.py` doesn't import `anthropic`, so it isn't needed there.
 
 The Windows server looks for its venv at `windows\.venv\Scripts\python.exe`. If that file doesn't exist it falls back to whatever Python is running the server (`sys.executable`).
 
